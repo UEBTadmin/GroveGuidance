@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   findGraphSitePagesList,
   getGraphSiteListsRelativeUrl,
+  isGraphSitePageItem,
   normalizeGraphPageItem,
   resolveGraphSitePagesListId,
   resolveSharePointLocation,
@@ -242,5 +243,35 @@ test('getGraphSiteListsRelativeUrl avoids unsupported Graph list expansion', () 
   assert.equal(
     getGraphSiteListsRelativeUrl('site-id'),
     '/sites/site-id/lists?$select=id,displayName,name,webUrl,list',
+  );
+});
+
+test('isGraphSitePageItem detects Site Page fields on Graph list items', () => {
+  assert.equal(
+    isGraphSitePageItem({
+      name: 'Home.aspx',
+      webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/Seitensammlung/Home.aspx',
+      fields: {
+        FileLeafRef: 'Home.aspx',
+        FileRef: '/sites/GroveGuidance/Seitensammlung/Home.aspx',
+        CanvasContent1: '<div>Welcome</div>',
+      },
+    }),
+    true,
+  );
+});
+
+test('isGraphSitePageItem ignores non-page documents', () => {
+  assert.equal(
+    isGraphSitePageItem({
+      name: 'Guide.pdf',
+      webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/Shared%20Documents/Guide.pdf',
+      fields: {
+        FileLeafRef: 'Guide.pdf',
+        FileRef: '/sites/GroveGuidance/Shared%20Documents/Guide.pdf',
+        CanvasContent1: '<div>Not a page</div>',
+      },
+    }),
+    false,
   );
 });
