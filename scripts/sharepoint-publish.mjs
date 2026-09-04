@@ -143,6 +143,59 @@ export function resolveSharePointLocation(tenantHostValue, sitePathValue) {
   return { tenantHost, sitePath };
 }
 
+export function normalizeGraphDriveKey(value) {
+  return decodePathSegment(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+export function splitGraphAssetServerRelativePath(serverUrl, sitePathValue = config.sitePath) {
+  const cleanPath = (serverUrl || '').split(/[?#]/, 1)[0] || '';
+  const normalizedSitePath = (sitePathValue || '').replace(/\/+$/, '');
+  const prefix = normalizedSitePath && normalizedSitePath !== '/' ? `${normalizedSitePath}/` : '/';
+  if (!cleanPath.toLowerCase().startsWith(prefix.toLowerCase())) {
+    return undefined;
+  }
+
+  const segments = cleanPath.slice(prefix.length).split('/').filter(Boolean).map(decodePathSegment);
+  if (segments.length < 2) {
+    return undefined;
+  }
+
+  const [librarySegment, ...itemSegments] = segments;
+  return {
+    driveLookupKey: normalizeGraphDriveKey(librarySegment),
+    itemPath: itemSegments.join('/'),
+  };
+}
+
+export function normalizeGraphPageItem(item) {
+  const fields = item?.fields || {};
+  let fileRef = fields.FileRef;
+  if (!fileRef && item?.webUrl) {
+    try {
+      fileRef = new URL(item.webUrl).pathname;
+    } catch {
+      fileRef = item.webUrl;
+    }
+  }
+
+  return {
+    Id: fields.Id ?? fields.ID ?? item?.id,
+    Title: fields.Title ?? item?.name,
+    FileLeafRef: fields.FileLeafRef ?? fields.LinkFilename ?? item?.name,
+    FileRef: fileRef,
+    Modified: fields.Modified ?? item?.lastModifiedDateTime,
+    Created: fields.Created ?? item?.createdDateTime,
+    FirstPublishedDate: fields.FirstPublishedDate,
+    Description: fields.Description,
+    CanvasContent1: fields.CanvasContent1,
+    BannerImageUrl: fields.BannerImageUrl,
+    OData__ModerationStatus: fields.OData__ModerationStatus ?? fields._ModerationStatus,
+    PromotedState: fields.PromotedState,
+  };
+}
+
 const resolvedSharePointLocation = resolveSharePointLocation(process.env.SP_TENANT_HOST, process.env.SP_SITE_PATH);
 
 const config = {
@@ -249,13 +302,13 @@ function extractBannerUrl(page) {
   return undefined;
 }
 
-async function getAccessToken() {
+async function getAccessToken(scope) {
   const tokenUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: config.clientId,
     client_secret: config.clientSecret,
-    scope: `https://${config.tenantHost}/.default`,
+    scope,
   });
   const response = await fetch(tokenUrl, {
     method: 'POST',
@@ -269,6 +322,14 @@ async function getAccessToken() {
   }
   const json = await response.json();
   return json.access_token;
+}
+
+async function getGraphAccessToken() {
+  return getAccessToken('https://graph.microsoft.com/.default');
+}
+
+async function getSharePointAccessToken() {
+  return getAccessToken(`https://${config.tenantHost}/.default`);
 }
 
 async function sleep(ms) {
@@ -316,6 +377,45 @@ async function sharePointRequest(token, relativeUrl, responseType = 'json', atte
   }
 }
 
+async function graphRequest(token, relativeUrl, responseType = 'json', attempt = 1) {
+  const url = relativeUrl.startsWith('http') ? relativeUrl : `https://graph.microsoft.com/v1.0${relativeUrl}`;
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        authorization: 'Bearer ' + token,
+        accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`Graph request failed (${response.status} ${response.statusText}) for ${url}`);
+      console.error(`Response body: ${errorBody.substring(0, 500)}`);
+
+      if ([500, 502, 503, 504].includes(response.status) && attempt < MAX_RETRIES) {
+        console.log(`Retrying Graph request (attempt ${attempt + 1}/${MAX_RETRIES}) after ${RETRY_DELAY_MS}ms...`);
+        await sleep(RETRY_DELAY_MS);
+        return graphRequest(token, relativeUrl, responseType, attempt + 1);
+      }
+
+      throw new Error(`Graph request failed (${response.status} ${response.statusText}) for ${url}`);
+    }
+
+    if (responseType === 'buffer') {
+      return Buffer.from(await response.arrayBuffer());
+    }
+    return response.json();
+  } catch (error) {
+    if (attempt < MAX_RETRIES && error.message && !error.message.includes('401')) {
+      console.log(`Network error, retrying (attempt ${attempt + 1}/${MAX_RETRIES}):`, error.message);
+      await sleep(RETRY_DELAY_MS);
+      return graphRequest(token, relativeUrl, responseType, attempt + 1);
+    }
+    throw error;
+  }
+}
+
 async function sharePointList(token, relativeUrl) {
   const values = [];
   let next = relativeUrl;
@@ -328,23 +428,92 @@ async function sharePointList(token, relativeUrl) {
   return values;
 }
 
+async function graphList(token, relativeUrl) {
+  const values = [];
+  let next = relativeUrl;
+  while (next) {
+    const json = await graphRequest(token, next);
+    const batch = json.value || [];
+    values.push(...batch);
+    next = json['@odata.nextLink'] || undefined;
+  }
+  return values;
+}
+
+let graphSiteContextPromise;
+
+function firstDrivePathSegment(webUrl) {
+  if (!webUrl) return undefined;
+  try {
+    const pathname = new URL(webUrl).pathname;
+    const cleanSitePath = config.sitePath.replace(/\/+$/, '');
+    const relative = pathname.toLowerCase().startsWith(`${cleanSitePath.toLowerCase()}/`)
+      ? pathname.slice(cleanSitePath.length)
+      : pathname;
+    return relative.split('/').filter(Boolean)[0];
+  } catch {
+    return undefined;
+  }
+}
+
+async function getGraphSiteContext(token) {
+  if (!graphSiteContextPromise) {
+    graphSiteContextPromise = (async () => {
+      const site = await graphRequest(token, `/sites/${config.tenantHost}:${config.sitePath}?$select=id`);
+      const [drives, lists] = await Promise.all([
+        graphList(token, `/sites/${site.id}/drives?$select=id,name,webUrl`),
+        graphList(token, `/sites/${site.id}/lists?$select=id,displayName,name`),
+      ]);
+
+      const sitePagesList = lists.find((list) => list.displayName === 'Site Pages' || list.name === 'Site Pages');
+      if (!sitePagesList) {
+        throw new Error(`Could not locate the SharePoint "Site Pages" list for ${config.sitePath}`);
+      }
+
+      const drivesByKey = new Map();
+      for (const drive of drives) {
+        for (const candidate of [drive.name, firstDrivePathSegment(drive.webUrl)]) {
+          const key = normalizeGraphDriveKey(candidate);
+          if (key && !drivesByKey.has(key)) {
+            drivesByKey.set(key, drive);
+          }
+        }
+      }
+
+      return {
+        siteId: site.id,
+        sitePagesListId: sitePagesList.id,
+        drivesByKey,
+      };
+    })();
+  }
+
+  return graphSiteContextPromise;
+}
+
 async function getPublishedPages(token) {
-  const query = `${config.sitePath}/_api/web/lists/getbytitle('Site Pages')/items?` +
-    '$select=Id,Title,FileLeafRef,FileRef,Modified,Created,FirstPublishedDate,Description,CanvasContent1,BannerImageUrl,Author/Title,Editor/Title,OData__ModerationStatus,PromotedState&' +
-    '$expand=Author,Editor&$orderby=Modified desc&$top=5000';
-  const rows = await sharePointList(token, query);
-  const filtered = rows.filter((row) => {
-    const moderation = row.OData__ModerationStatus ?? row._ModerationStatus;
-    const promoted = row.PromotedState ?? 0;
-    return moderation === 0 && promoted !== 2;
-  });
+  const { siteId, sitePagesListId } = await getGraphSiteContext(token);
+  const rows = await graphList(token, `/sites/${siteId}/lists/${sitePagesListId}/items?$expand=fields`);
+  const filtered = rows
+    .map(normalizeGraphPageItem)
+    .filter((row) => row.FileLeafRef && /\.aspx$/i.test(row.FileLeafRef))
+    .filter((row) => {
+      const moderation = Number(row.OData__ModerationStatus ?? row._ModerationStatus ?? 0);
+      const promoted = Number(row.PromotedState ?? 0);
+      return moderation === 0 && promoted !== 2;
+    })
+    .sort((left, right) => new Date(right.Modified || 0) - new Date(left.Modified || 0));
   if (config.pilotPageLimit && Number.isFinite(config.pilotPageLimit)) {
     return filtered.slice(0, Math.max(1, config.pilotPageLimit));
   }
   return filtered;
 }
 
-async function getNavigation(token) {
+async function getNavigation(getOptionalSharePointToken = async () => undefined) {
+  const token = await getOptionalSharePointToken();
+  if (!token) {
+    return [];
+  }
   const links = [];
   for (const navQuery of NAV_QUERIES) {
     try {
@@ -363,6 +532,29 @@ async function getNavigation(token) {
     }
   }
   return [...unique.values()];
+}
+
+async function getAssetContent(graphToken, getOptionalSharePointToken, serverUrl) {
+  const graphContext = await getGraphSiteContext(graphToken);
+  const assetPath = splitGraphAssetServerRelativePath(serverUrl);
+  if (assetPath) {
+    const drive = graphContext.drivesByKey.get(assetPath.driveLookupKey);
+    if (drive) {
+      const encodedItemPath = assetPath.itemPath.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+      return graphRequest(
+        graphToken,
+        `/sites/${graphContext.siteId}/drives/${drive.id}/root:/${encodedItemPath}:/content`,
+        'buffer',
+      );
+    }
+  }
+
+  const sharePointToken = await getOptionalSharePointToken();
+  if (sharePointToken) {
+    return sharePointRequest(sharePointToken, serverUrl, 'buffer');
+  }
+
+  throw new Error(`Could not resolve SharePoint asset for download: ${serverUrl}`);
 }
 
 function normalizeToSharePointUrl(raw, pageFileRef) {
@@ -561,8 +753,18 @@ async function sync() {
   assertSyncEnvironment();
   await ensureDir(config.outputDir);
   const state = await loadState();
-  const token = await getAccessToken();
-  const [pages, navItems] = await Promise.all([getPublishedPages(token), getNavigation(token)]);
+  const graphToken = await getGraphAccessToken();
+  let sharePointTokenPromise;
+  const getOptionalSharePointToken = async () => {
+    if (!sharePointTokenPromise) {
+      sharePointTokenPromise = getSharePointAccessToken().catch(() => undefined);
+    }
+    return sharePointTokenPromise;
+  };
+  const [pages, navItems] = await Promise.all([
+    getPublishedPages(graphToken),
+    getNavigation(getOptionalSharePointToken),
+  ]);
 
   const pageRouteMap = new Map();
   const pagesById = new Map();
@@ -607,7 +809,7 @@ async function sync() {
       if (previousAsset && previousAsset.path === localAsset && await exists(outputPath)) {
         continue;
       }
-      const content = await sharePointRequest(token, assetUrl, 'buffer');
+      const content = await getAssetContent(graphToken, getOptionalSharePointToken, assetUrl);
       await ensureDir(path.dirname(outputPath));
       await writeFile(outputPath, content);
       currentAssetState[assetUrl] = {
