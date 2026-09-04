@@ -710,32 +710,32 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
 }
 
 function isGraphAuthFailure(error) {
-const message = String(error?.message || '');
-return /Graph request failed \((401|403)\b/i.test(message);
+  const message = String(error?.message || '');
+  return /Graph request failed \((401|403)\b/i.test(message);
 }
 
 function isGraphAuthOrTransientFailure(error) {
-const message = String(error?.message || '');
-return isGraphAuthFailure(error) || /Graph request failed \((500|502|503|504)\b/i.test(message);
+  const message = String(error?.message || '');
+  return isGraphAuthFailure(error) || /Graph request failed \((500|502|503|504)\b/i.test(message);
 }
 
 async function getPublishedPagesFromSharePoint(token) {
-const rows = await sharePointList(
-  token,
-  `${config.sitePath}/_api/web/lists/getByTitle('Site Pages')/items?$select=Id,Title,FileLeafRef,FileRef,Modified,Created,FirstPublishedDate,Description,CanvasContent1,BannerImageUrl,OData__ModerationStatus,PromotedState`,
-);
-const filtered = rows
-  .filter((row) => row.FileLeafRef && /\.aspx$/i.test(row.FileLeafRef))
-  .filter((row) => {
-    const moderation = Number(row.OData__ModerationStatus ?? row._ModerationStatus ?? 0);
-    const promoted = Number(row.PromotedState ?? 0);
-    return moderation === 0 && promoted !== 2;
-  })
-  .sort((left, right) => new Date(right.Modified || 0) - new Date(left.Modified || 0));
-if (config.pilotPageLimit && Number.isFinite(config.pilotPageLimit)) {
-  return filtered.slice(0, Math.max(1, config.pilotPageLimit));
-}
-return filtered;
+  const rows = await sharePointList(
+    token,
+    `${config.sitePath}/_api/web/lists/getByTitle('Site Pages')/items?$select=Id,Title,FileLeafRef,FileRef,Modified,Created,FirstPublishedDate,Description,CanvasContent1,BannerImageUrl,OData__ModerationStatus,PromotedState`,
+  );
+  const filtered = rows
+    .filter((row) => row.FileLeafRef && /\.aspx$/i.test(row.FileLeafRef))
+    .filter((row) => {
+      const moderation = Number(row.OData__ModerationStatus ?? row._ModerationStatus ?? 0);
+      const promoted = Number(row.PromotedState ?? 0);
+      return moderation === 0 && promoted !== 2;
+    })
+    .sort((left, right) => new Date(right.Modified || 0) - new Date(left.Modified || 0));
+  if (config.pilotPageLimit && Number.isFinite(config.pilotPageLimit)) {
+    return filtered.slice(0, Math.max(1, config.pilotPageLimit));
+  }
+  return filtered;
 }
 
 function mapNavigationLinks(navItems, pageRouteMap) {
