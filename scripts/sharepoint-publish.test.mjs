@@ -186,6 +186,28 @@ test('findGraphSitePagesList matches a Pages library webUrl path', () => {
   );
 });
 
+test('findGraphSitePagesList matches by Site Pages template when names are localized', () => {
+  assert.deepEqual(
+    findGraphSitePagesList([
+      { id: 'documents', displayName: 'Documents', name: 'Documents' },
+      {
+        id: 'localized-pages',
+        displayName: 'Siteinhalt',
+        name: 'Dokumentbibliothek',
+        webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/Seitensammlung',
+        list: { template: 'SitePageLibrary' },
+      },
+    ]),
+    {
+      id: 'localized-pages',
+      displayName: 'Siteinhalt',
+      name: 'Dokumentbibliothek',
+      webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/Seitensammlung',
+      list: { template: 'SitePageLibrary' },
+    },
+  );
+});
+
 test('resolveGraphSitePagesListId falls back to Site Pages drive metadata when list discovery misses it', () => {
   assert.equal(
     resolveGraphSitePagesListId(
@@ -219,6 +241,6 @@ test('resolveGraphSitePagesListId accepts Pages drive metadata as fallback', () 
 test('getGraphSiteListsRelativeUrl avoids unsupported Graph list expansion', () => {
   assert.equal(
     getGraphSiteListsRelativeUrl('site-id'),
-    '/sites/site-id/lists?$select=id,displayName,name,webUrl',
+    '/sites/site-id/lists?$select=id,displayName,name,webUrl,list',
   );
 });

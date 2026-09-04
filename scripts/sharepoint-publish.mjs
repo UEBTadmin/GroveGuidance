@@ -149,7 +149,7 @@ export function normalizeGraphDriveKey(value) {
     .replace(/[^a-z0-9]+/g, '');
 }
 
-const SITE_PAGES_KEYS = new Set(['sitepages', 'pages']);
+const SITE_PAGES_KEYS = new Set(['sitepages', 'pages', 'sitepagelibrary']);
 
 function lastUrlPathSegment(webUrl) {
   if (!webUrl) return '';
@@ -198,7 +198,7 @@ export function resolveGraphSitePagesListId(lists, drives) {
 }
 
 export function getGraphSiteListsRelativeUrl(siteId) {
-  return `/sites/${siteId}/lists?$select=id,displayName,name,webUrl`;
+  return `/sites/${siteId}/lists?$select=id,displayName,name,webUrl,list`;
 }
 
 export function splitGraphAssetServerRelativePath(serverUrl, sitePathValue = config.sitePath) {
