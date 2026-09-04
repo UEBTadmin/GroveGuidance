@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   findGraphSitePagesList,
+  getGraphSiteListsRelativeUrl,
   normalizeGraphPageItem,
   resolveSharePointLocation,
   splitGraphAssetServerRelativePath,
@@ -161,5 +162,12 @@ test('findGraphSitePagesList matches the Site Pages library by webUrl path', () 
       name: 'pages',
       webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages',
     },
+  );
+});
+
+test('getGraphSiteListsRelativeUrl avoids unsupported Graph list expansion', () => {
+  assert.equal(
+    getGraphSiteListsRelativeUrl('site-id'),
+    '/sites/site-id/lists?$select=id,displayName,name,webUrl',
   );
 });
