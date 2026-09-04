@@ -177,6 +177,24 @@ export function findGraphSitePagesList(lists) {
   });
 }
 
+export function resolveGraphSitePagesListId(lists, drives) {
+  const sitePagesList = findGraphSitePagesList(lists);
+  if (sitePagesList?.id) {
+    return sitePagesList.id;
+  }
+
+  const sitePagesDrive = (drives || []).find((drive) => {
+    const candidateKeys = [
+      drive?.name,
+      lastUrlPathSegment(drive?.webUrl),
+    ].map(normalizeGraphDriveKey);
+
+    return candidateKeys.includes('sitepages');
+  });
+
+  return sitePagesDrive?.sharepointIds?.listId;
+}
+
 export function getGraphSiteListsRelativeUrl(siteId) {
   return `/sites/${siteId}/lists?$select=id,displayName,name,webUrl`;
 }
@@ -501,12 +519,12 @@ async function getGraphSiteContext(token) {
     graphSiteContextPromise = (async () => {
       const site = await graphRequest(token, `/sites/${config.tenantHost}:${config.sitePath}?$select=id`);
       const [drives, lists] = await Promise.all([
-        graphList(token, `/sites/${site.id}/drives?$select=id,name,webUrl`),
+        graphList(token, `/sites/${site.id}/drives?$select=id,name,webUrl,sharepointIds`),
         graphList(token, getGraphSiteListsRelativeUrl(site.id)),
       ]);
 
-      const sitePagesList = findGraphSitePagesList(lists);
-      if (!sitePagesList) {
+      const sitePagesListId = resolveGraphSitePagesListId(lists, drives);
+      if (!sitePagesListId) {
         throw new Error(`Could not locate the SharePoint "Site Pages" list for ${config.sitePath}`);
       }
 
@@ -522,7 +540,7 @@ async function getGraphSiteContext(token) {
 
       return {
         siteId: site.id,
-        sitePagesListId: sitePagesList.id,
+        sitePagesListId,
         drivesByKey,
       };
     })();

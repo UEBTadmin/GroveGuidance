@@ -5,6 +5,7 @@ import {
   findGraphSitePagesList,
   getGraphSiteListsRelativeUrl,
   normalizeGraphPageItem,
+  resolveGraphSitePagesListId,
   resolveSharePointLocation,
   splitGraphAssetServerRelativePath,
 } from './sharepoint-publish.mjs';
@@ -162,6 +163,21 @@ test('findGraphSitePagesList matches the Site Pages library by webUrl path', () 
       name: 'pages',
       webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages',
     },
+  );
+});
+
+test('resolveGraphSitePagesListId falls back to Site Pages drive metadata when list discovery misses it', () => {
+  assert.equal(
+    resolveGraphSitePagesListId(
+      [{ id: 'documents', displayName: 'Documents', name: 'Documents' }],
+      [{
+        id: 'pages-drive',
+        name: 'Pages',
+        webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages',
+        sharepointIds: { listId: 'site-pages-list-id' },
+      }],
+    ),
+    'site-pages-list-id',
   );
 });
 
