@@ -39,7 +39,9 @@ The publisher requests both:
 - `https://graph.microsoft.com/.default` (Graph token)
 - `https://{tenant-host}/.default` (SharePoint token)
 
-Preferred mode uses Microsoft Graph application permissions that can read SharePoint site pages and files (for example `Sites.Read.All`). If Graph site/list access is unauthorized, the publisher automatically falls back to SharePoint REST for page and asset synchronization so deployments can still proceed when SharePoint app-only permissions are available.
+Preferred mode uses Microsoft Graph application permissions that can read SharePoint site pages and files (for example `Sites.Read.All`, or `Sites.Selected` with a site-level grant). Grant admin consent after adding permissions.
+
+If Graph site/list access is unauthorized, the publisher attempts SharePoint REST fallback for page and asset synchronization. Some SharePoint sites reject client-secret app-only REST tokens with `Unsupported app only token.`; in that case update Entra Graph application permissions/site grants (or switch to certificate-based SharePoint app-only auth if you require REST fallback).
 
 ## Workflow
 
