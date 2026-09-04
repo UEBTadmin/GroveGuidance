@@ -26,8 +26,49 @@ function decodePathSegment(segment) {
   }
 }
 
+function normalizePathCandidate(pathValue) {
+  let value = (pathValue || '').trim();
+  if (!value) {
+    return '';
+  }
+  value = value.split('#', 1)[0] || '';
+  try {
+    value = decodeURIComponent(value);
+  } catch {
+    // Keep the raw candidate when decoding fails.
+  }
+  value = value.replace(/\\/g, '/');
+
+  const siteMatch = value.match(/\/(?:sites|teams)\/[^/?#]+(?:\/[^?#]*)?/i);
+  if (siteMatch) {
+    value = siteMatch[0];
+  }
+
+  if (!value.startsWith('/')) {
+    value = `/${value}`;
+  }
+
+  return value;
+}
+
 function normalizeSharePointSitePath(sitePathValue) {
-  let sitePath = (sitePathValue || '').trim();
+  const rawSitePath = (sitePathValue || '').trim();
+  const [rawPath = '', rawQuery = ''] = rawSitePath.split('?', 2);
+  let sitePath = normalizePathCandidate(rawPath);
+
+  if (!/\/(?:sites|teams)\//i.test(sitePath) && rawQuery) {
+    const params = new URLSearchParams(rawQuery.split('#', 1)[0] || '');
+    for (const key of ['id', 'RootFolder', 'rootfolder']) {
+      const candidate = params.get(key);
+      if (!candidate) continue;
+      const normalizedCandidate = normalizePathCandidate(candidate);
+      if (/\/(?:sites|teams)\//i.test(normalizedCandidate)) {
+        sitePath = normalizedCandidate;
+        break;
+      }
+    }
+  }
+
   sitePath = sitePath.split(/[?#]/, 1)[0] || '';
   if (!sitePath.startsWith('/')) {
     sitePath = `/${sitePath}`;
@@ -36,6 +77,13 @@ function normalizeSharePointSitePath(sitePathValue) {
   sitePath = sitePath.split(/\/(?:_api|_layouts)\b/i)[0] || '/';
 
   const segments = sitePath.split('/').filter(Boolean);
+  const libraryIndex = segments.findIndex((segment, index) => (
+    index >= 2 && SHAREPOINT_LIBRARY_SEGMENTS.has(decodePathSegment(segment).toLowerCase())
+  ));
+  if (libraryIndex >= 0) {
+    segments.splice(libraryIndex);
+  }
+
   while (segments.length > 0) {
     const lastSegment = decodePathSegment(segments[segments.length - 1]);
     if (/\.[a-z0-9]+$/i.test(lastSegment) || /^forms$/i.test(lastSegment)) {
