@@ -3,12 +3,61 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+const DEFAULT_SP_TENANT_HOST = 'uebt.sharepoint.com';
+const DEFAULT_SP_SITE_PATH = '/sites/GroveGuidance';
+
+function resolveSharePointLocation(tenantHostValue, sitePathValue) {
+  let tenantHost = (tenantHostValue || '').trim();
+  let derivedSitePath = '';
+
+  if (/^https?:\/\//i.test(tenantHost)) {
+    try {
+      const parsed = new URL(tenantHost);
+      tenantHost = parsed.host;
+      derivedSitePath = parsed.pathname;
+    } catch {
+      tenantHost = '';
+    }
+  } else {
+    const slashIndex = tenantHost.indexOf('/');
+    if (slashIndex >= 0) {
+      derivedSitePath = tenantHost.slice(slashIndex);
+      tenantHost = tenantHost.slice(0, slashIndex);
+    }
+  }
+
+  tenantHost = tenantHost.replace(/\/+$/, '').toLowerCase() || DEFAULT_SP_TENANT_HOST;
+
+  let sitePath = (sitePathValue || '').trim();
+  if (/^https?:\/\//i.test(sitePath)) {
+    try {
+      const parsed = new URL(sitePath);
+      if (parsed.host) {
+        tenantHost = parsed.host.toLowerCase();
+      }
+      sitePath = parsed.pathname;
+    } catch {
+      sitePath = '';
+    }
+  }
+
+  sitePath = sitePath || derivedSitePath || DEFAULT_SP_SITE_PATH;
+  if (!sitePath.startsWith('/')) {
+    sitePath = `/${sitePath}`;
+  }
+  sitePath = sitePath.replace(/\/+$/, '') || '/';
+
+  return { tenantHost, sitePath };
+}
+
+const resolvedSharePointLocation = resolveSharePointLocation(process.env.SP_TENANT_HOST, process.env.SP_SITE_PATH);
+
 const config = {
   tenantId: process.env.SP_TENANT_ID,
   clientId: process.env.SP_CLIENT_ID,
   clientSecret: process.env.SP_CLIENT_SECRET,
-  tenantHost: process.env.SP_TENANT_HOST || 'uebt.sharepoint.com',
-  sitePath: process.env.SP_SITE_PATH || '/sites/GroveGuidance',
+  tenantHost: resolvedSharePointLocation.tenantHost,
+  sitePath: resolvedSharePointLocation.sitePath,
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'https://groveguidance.uebt.org').replace(/\/$/, ''),
   outputDir: path.resolve(process.cwd(), process.env.OUTPUT_DIR || 'dist'),
   stateFile: path.resolve(process.cwd(), process.env.STATE_FILE || '.cache/sharepoint-sync-state.json'),
