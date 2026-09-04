@@ -34,9 +34,12 @@ Add these repository secrets:
 
 ## Azure AD app permissions
 
-The Azure AD app used by `SP_CLIENT_ID` must have Microsoft Graph application permissions that can read SharePoint site pages and files (for example `Sites.Read.All` via the `https://graph.microsoft.com/.default` token scope).
+The publisher requests both:
 
-The publisher still attempts SharePoint-scoped REST calls for navigation as a best-effort enhancement, but page synchronization no longer depends on SharePoint REST accepting an app-only secret-based token.
+- `https://graph.microsoft.com/.default` (Graph token)
+- `https://{tenant-host}/.default` (SharePoint token)
+
+Preferred mode uses Microsoft Graph application permissions that can read SharePoint site pages and files (for example `Sites.Read.All`). If Graph site/list access is unauthorized, the publisher automatically falls back to SharePoint REST for page and asset synchronization so deployments can still proceed when SharePoint app-only permissions are available.
 
 ## Workflow
 

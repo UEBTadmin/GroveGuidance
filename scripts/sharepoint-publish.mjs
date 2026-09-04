@@ -491,22 +491,35 @@ async function getGraphSiteContext(token) {
   return graphSiteContextPromise;
 }
 
-async function getPublishedPages(token) {
-  const { siteId, sitePagesListId } = await getGraphSiteContext(token);
-  const rows = await graphList(token, `/sites/${siteId}/lists/${sitePagesListId}/items?$expand=fields`);
-  const filtered = rows
-    .map(normalizeGraphPageItem)
-    .filter((row) => row.FileLeafRef && /\.aspx$/i.test(row.FileLeafRef))
-    .filter((row) => {
-      const moderation = Number(row.OData__ModerationStatus ?? row._ModerationStatus ?? 0);
-      const promoted = Number(row.PromotedState ?? 0);
-      return moderation === 0 && promoted !== 2;
-    })
-    .sort((left, right) => new Date(right.Modified || 0) - new Date(left.Modified || 0));
-  if (config.pilotPageLimit && Number.isFinite(config.pilotPageLimit)) {
-    return filtered.slice(0, Math.max(1, config.pilotPageLimit));
+async function getPublishedPages(graphToken, getOptionalSharePointToken = async () => undefined) {
+  try {
+    const { siteId, sitePagesListId } = await getGraphSiteContext(graphToken);
+    const rows = await graphList(graphToken, `/sites/${siteId}/lists/${sitePagesListId}/items?$expand=fields`);
+    const filtered = rows
+      .map(normalizeGraphPageItem)
+      .filter((row) => row.FileLeafRef && /\.aspx$/i.test(row.FileLeafRef))
+      .filter((row) => {
+        const moderation = Number(row.OData__ModerationStatus ?? row._ModerationStatus ?? 0);
+        const promoted = Number(row.PromotedState ?? 0);
+        return moderation === 0 && promoted !== 2;
+      })
+      .sort((left, right) => new Date(right.Modified || 0) - new Date(left.Modified || 0));
+    if (config.pilotPageLimit && Number.isFinite(config.pilotPageLimit)) {
+      return filtered.slice(0, Math.max(1, config.pilotPageLimit));
+    }
+    return filtered;
+  } catch (error) {
+    if (!isGraphAuthFailure(error)) {
+      throw error;
+    }
+    console.warn(`Graph page sync unavailable (${error.message}); falling back to SharePoint REST.`);
   }
-  return filtered;
+
+  const sharePointToken = await getOptionalSharePointToken();
+  if (!sharePointToken) {
+    throw new Error('Graph page sync failed and no SharePoint token was available for fallback.');
+  }
+  return getPublishedPagesFromSharePoint(sharePointToken);
 }
 
 async function getNavigation(getOptionalSharePointToken = async () => undefined) {
@@ -535,17 +548,30 @@ async function getNavigation(getOptionalSharePointToken = async () => undefined)
 }
 
 async function getAssetContent(graphToken, getOptionalSharePointToken, serverUrl) {
-  const graphContext = await getGraphSiteContext(graphToken);
+  let graphContext;
+  try {
+    graphContext = await getGraphSiteContext(graphToken);
+  } catch (error) {
+    if (!isGraphAuthFailure(error)) {
+      throw error;
+    }
+  }
   const assetPath = splitGraphAssetServerRelativePath(serverUrl);
-  if (assetPath) {
+  if (graphContext && assetPath) {
     const drive = graphContext.drivesByKey.get(assetPath.driveLookupKey);
     if (drive) {
       const encodedItemPath = assetPath.itemPath.split('/').map((segment) => encodeURIComponent(segment)).join('/');
-      return graphRequest(
-        graphToken,
-        `/sites/${graphContext.siteId}/drives/${drive.id}/root:/${encodedItemPath}:/content`,
-        'buffer',
-      );
+      try {
+        return await graphRequest(
+          graphToken,
+          `/sites/${graphContext.siteId}/drives/${drive.id}/root:/${encodedItemPath}:/content`,
+          'buffer',
+        );
+      } catch (error) {
+        if (!isGraphAuthOrTransientFailure(error)) {
+          throw error;
+        }
+      }
     }
   }
 
@@ -683,6 +709,35 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
 </html>`;
 }
 
+function isGraphAuthFailure(error) {
+  const message = String(error?.message || '');
+  return /Graph request failed \((401|403)\b/i.test(message);
+}
+
+function isGraphAuthOrTransientFailure(error) {
+  const message = String(error?.message || '');
+  return isGraphAuthFailure(error) || /Graph request failed \((500|502|503|504)\b/i.test(message);
+}
+
+async function getPublishedPagesFromSharePoint(token) {
+  const rows = await sharePointList(
+    token,
+    `${config.sitePath}/_api/web/lists/getByTitle('Site Pages')/items?$select=Id,Title,FileLeafRef,FileRef,Modified,Created,FirstPublishedDate,Description,CanvasContent1,BannerImageUrl,OData__ModerationStatus,PromotedState`,
+  );
+  const filtered = rows
+    .filter((row) => row.FileLeafRef && /\.aspx$/i.test(row.FileLeafRef))
+    .filter((row) => {
+      const moderation = Number(row.OData__ModerationStatus ?? row._ModerationStatus ?? 0);
+      const promoted = Number(row.PromotedState ?? 0);
+      return moderation === 0 && promoted !== 2;
+    })
+    .sort((left, right) => new Date(right.Modified || 0) - new Date(left.Modified || 0));
+  if (config.pilotPageLimit && Number.isFinite(config.pilotPageLimit)) {
+    return filtered.slice(0, Math.max(1, config.pilotPageLimit));
+  }
+  return filtered;
+}
+
 function mapNavigationLinks(navItems, pageRouteMap) {
   const links = [];
   for (const item of navItems) {
@@ -762,7 +817,7 @@ async function sync() {
     return sharePointTokenPromise;
   };
   const [pages, navItems] = await Promise.all([
-    getPublishedPages(graphToken),
+    getPublishedPages(graphToken, getOptionalSharePointToken),
     getNavigation(getOptionalSharePointToken),
   ]);
 
