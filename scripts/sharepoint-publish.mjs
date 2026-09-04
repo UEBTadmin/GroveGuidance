@@ -8,9 +8,27 @@ const DEFAULT_SP_TENANT_HOST = 'uebt.sharepoint.com';
 const DEFAULT_SP_SITE_PATH = '/sites/GroveGuidance';
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
+const SHAREPOINT_LIBRARY_SEGMENTS = new Set([
+  'documents',
+  'shared documents',
+  'form templates',
+  'siteassets',
+  'site assets',
+  'stylelibrary',
+  'style library',
+]);
+
+function decodePathSegment(segment) {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
 
 function normalizeSharePointSitePath(sitePathValue) {
   let sitePath = (sitePathValue || '').trim();
+  sitePath = sitePath.split(/[?#]/, 1)[0] || '';
   if (!sitePath.startsWith('/')) {
     sitePath = `/${sitePath}`;
   }
@@ -19,12 +37,16 @@ function normalizeSharePointSitePath(sitePathValue) {
 
   const segments = sitePath.split('/').filter(Boolean);
   while (segments.length > 0) {
-    const lastSegment = segments[segments.length - 1];
-    if (/\.aspx$/i.test(lastSegment) || /^forms$/i.test(lastSegment)) {
+    const lastSegment = decodePathSegment(segments[segments.length - 1]);
+    if (/\.[a-z0-9]+$/i.test(lastSegment) || /^forms$/i.test(lastSegment)) {
       segments.pop();
       continue;
     }
     if (/^sitepages$/i.test(lastSegment) || /^pages$/i.test(lastSegment)) {
+      segments.pop();
+      continue;
+    }
+    if (segments.length > 2 && SHAREPOINT_LIBRARY_SEGMENTS.has(lastSegment.toLowerCase())) {
       segments.pop();
     }
     break;
