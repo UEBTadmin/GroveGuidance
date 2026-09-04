@@ -1,0 +1,10 @@
+{
+  "name": "grove-guidance-publisher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SharePoint-to-static publish pipeline for Grove Guidance",
+  "scripts": {
+    "publish:sync": "node ./scripts/sharepoint-publish.mjs sync",
+    "publish:validate": "node ./scripts/sharepoint-publish.mjs validate"
+  }
+}
