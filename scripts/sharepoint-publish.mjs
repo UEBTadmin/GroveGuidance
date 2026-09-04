@@ -177,6 +177,10 @@ export function findGraphSitePagesList(lists) {
   });
 }
 
+export function getGraphSiteListsRelativeUrl(siteId) {
+  return `/sites/${siteId}/lists?$select=id,displayName,name,webUrl`;
+}
+
 export function splitGraphAssetServerRelativePath(serverUrl, sitePathValue = config.sitePath) {
   const cleanPath = (serverUrl || '').split(/[?#]/, 1)[0] || '';
   const normalizedSitePath = (sitePathValue || '').replace(/\/+$/, '');
@@ -498,7 +502,7 @@ async function getGraphSiteContext(token) {
       const site = await graphRequest(token, `/sites/${config.tenantHost}:${config.sitePath}?$select=id`);
       const [drives, lists] = await Promise.all([
         graphList(token, `/sites/${site.id}/drives?$select=id,name,webUrl`),
-        graphList(token, `/sites/${site.id}/lists?$select=id,displayName,name,webUrl&$expand=list`),
+        graphList(token, getGraphSiteListsRelativeUrl(site.id)),
       ]);
 
       const sitePagesList = findGraphSitePagesList(lists);
