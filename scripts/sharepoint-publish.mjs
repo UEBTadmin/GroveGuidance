@@ -150,6 +150,14 @@ export function normalizeGraphDriveKey(value) {
 }
 
 const SITE_PAGES_KEYS = new Set(['sitepages', 'pages', 'sitepagelibrary']);
+const GRAPH_SITE_PAGE_SIGNALS = [
+  'CanvasContent1',
+  'BannerImageUrl',
+  'FirstPublishedDate',
+  'OData__ModerationStatus',
+  '_ModerationStatus',
+  'PromotedState',
+];
 
 function lastUrlPathSegment(webUrl) {
   if (!webUrl) return '';
@@ -199,6 +207,33 @@ export function resolveGraphSitePagesListId(lists, drives) {
 
 export function getGraphSiteListsRelativeUrl(siteId) {
   return `/sites/${siteId}/lists?$select=id,displayName,name,webUrl,list`;
+}
+
+function shouldProbeGraphSitePagesList(list) {
+  const template = normalizeGraphDriveKey(list?.list?.template);
+  if (!template || template === 'documentlibrary' || SITE_PAGES_KEYS.has(template)) {
+    return true;
+  }
+
+  const candidateKeys = [
+    list?.displayName,
+    list?.name,
+    lastUrlPathSegment(list?.webUrl),
+  ].map(normalizeGraphDriveKey);
+
+  return candidateKeys.some((key) => key.includes('page'));
+}
+
+export function isGraphSitePageItem(item) {
+  const page = normalizeGraphPageItem(item);
+  if (!page.FileLeafRef || !/\.aspx$/i.test(page.FileLeafRef)) {
+    return false;
+  }
+
+  return GRAPH_SITE_PAGE_SIGNALS.some((field) => {
+    const value = item?.fields?.[field] ?? page[field];
+    return value !== undefined && value !== null && value !== '';
+  });
 }
 
 export function splitGraphAssetServerRelativePath(serverUrl, sitePathValue = config.sitePath) {
@@ -526,9 +561,6 @@ async function getGraphSiteContext(token) {
       ]);
 
       const sitePagesListId = resolveGraphSitePagesListId(lists, drives);
-      if (!sitePagesListId) {
-        throw new Error(`Could not locate the SharePoint "Site Pages" list for ${config.sitePath}`);
-      }
 
       const drivesByKey = new Map();
       for (const drive of drives) {
@@ -543,6 +575,7 @@ async function getGraphSiteContext(token) {
       return {
         siteId: site.id,
         sitePagesListId,
+        lists,
         drivesByKey,
       };
     })();
@@ -551,10 +584,37 @@ async function getGraphSiteContext(token) {
   return graphSiteContextPromise;
 }
 
+async function probeGraphSitePagesListId(token, siteId, lists) {
+  for (const list of lists || []) {
+    if (!list?.id || !shouldProbeGraphSitePagesList(list)) {
+      continue;
+    }
+
+    try {
+      const rows = await graphList(token, `/sites/${siteId}/lists/${list.id}/items?$expand=fields&$top=5`);
+      if (rows.some(isGraphSitePageItem)) {
+        return list.id;
+      }
+    } catch (error) {
+      if (isGraphAuthFailure(error)) {
+        throw error;
+      }
+      console.warn(`Graph Site Pages probe skipped for list ${list.id} (${error.message}).`);
+    }
+  }
+
+  return undefined;
+}
+
 async function getPublishedPages(graphToken, getOptionalSharePointToken = async () => undefined) {
+  let graphError;
   try {
-    const { siteId, sitePagesListId } = await getGraphSiteContext(graphToken);
-    const rows = await graphList(graphToken, `/sites/${siteId}/lists/${sitePagesListId}/items?$expand=fields`);
+    const { siteId, sitePagesListId, lists } = await getGraphSiteContext(graphToken);
+    const resolvedSitePagesListId = sitePagesListId || await probeGraphSitePagesListId(graphToken, siteId, lists);
+    if (!resolvedSitePagesListId) {
+      throw new Error(`Could not locate the SharePoint "Site Pages" list for ${config.sitePath}`);
+    }
+    const rows = await graphList(graphToken, `/sites/${siteId}/lists/${resolvedSitePagesListId}/items?$expand=fields`);
     const filtered = rows
       .map(normalizeGraphPageItem)
       .filter((row) => row.FileLeafRef && /\.aspx$/i.test(row.FileLeafRef))
@@ -569,15 +629,13 @@ async function getPublishedPages(graphToken, getOptionalSharePointToken = async 
     }
     return filtered;
   } catch (error) {
-    if (!isGraphAuthFailure(error)) {
-      throw error;
-    }
+    graphError = error;
     console.warn(`Graph page sync unavailable (${error.message}); falling back to SharePoint REST.`);
   }
 
   const sharePointToken = await getOptionalSharePointToken();
   if (!sharePointToken) {
-    throw new Error('Graph page sync failed and no SharePoint token was available for fallback.');
+    throw new Error(`Graph page sync failed and no SharePoint token was available for fallback: ${graphError?.message || 'unknown error'}`);
   }
   try {
     return await getPublishedPagesFromSharePoint(sharePointToken);
@@ -585,8 +643,11 @@ async function getPublishedPages(graphToken, getOptionalSharePointToken = async 
     if (!isSharePointUnsupportedAppOnlyToken(error)) {
       throw error;
     }
+    const graphFailurePrefix = isGraphAuthFailure(graphError)
+      ? 'Graph page sync was unauthorized and '
+      : `Graph page sync could not identify the SharePoint pages library (${graphError?.message || 'unknown error'}) and `;
     throw new Error(
-      'Graph page sync was unauthorized and SharePoint REST fallback rejected the app-only token. '
+      `${graphFailurePrefix}SharePoint REST fallback rejected the app-only token. `
       + 'In Entra, grant this app Microsoft Graph application access to the target site '
       + '(Sites.Read.All, or Sites.Selected plus a site-level grant) and admin-consent it. '
       + 'SharePoint REST app-only with a client secret is not supported by this site.',
