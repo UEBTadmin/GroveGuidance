@@ -149,6 +149,34 @@ export function normalizeGraphDriveKey(value) {
     .replace(/[^a-z0-9]+/g, '');
 }
 
+function lastUrlPathSegment(webUrl) {
+  if (!webUrl) return '';
+  try {
+    const pathname = new URL(webUrl).pathname;
+    const segments = pathname.split('/').filter(Boolean);
+    return segments.at(-1) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function findGraphSitePagesList(lists) {
+  return (lists || []).find((list) => {
+    const template = normalizeGraphDriveKey(list?.list?.template);
+    if (template === 'sitepages') {
+      return true;
+    }
+
+    const candidateKeys = [
+      list?.displayName,
+      list?.name,
+      lastUrlPathSegment(list?.webUrl),
+    ].map(normalizeGraphDriveKey);
+
+    return candidateKeys.includes('sitepages');
+  });
+}
+
 export function splitGraphAssetServerRelativePath(serverUrl, sitePathValue = config.sitePath) {
   const cleanPath = (serverUrl || '').split(/[?#]/, 1)[0] || '';
   const normalizedSitePath = (sitePathValue || '').replace(/\/+$/, '');
@@ -470,10 +498,10 @@ async function getGraphSiteContext(token) {
       const site = await graphRequest(token, `/sites/${config.tenantHost}:${config.sitePath}?$select=id`);
       const [drives, lists] = await Promise.all([
         graphList(token, `/sites/${site.id}/drives?$select=id,name,webUrl`),
-        graphList(token, `/sites/${site.id}/lists?$select=id,displayName,name`),
+        graphList(token, `/sites/${site.id}/lists?$select=id,displayName,name,webUrl&$expand=list`),
       ]);
 
-      const sitePagesList = lists.find((list) => list.displayName === 'Site Pages' || list.name === 'Site Pages');
+      const sitePagesList = findGraphSitePagesList(lists);
       if (!sitePagesList) {
         throw new Error(`Could not locate the SharePoint "Site Pages" list for ${config.sitePath}`);
       }

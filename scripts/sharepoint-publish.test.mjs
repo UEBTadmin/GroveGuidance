@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  findGraphSitePagesList,
   normalizeGraphPageItem,
   resolveSharePointLocation,
   splitGraphAssetServerRelativePath,
@@ -129,6 +130,36 @@ test('normalizeGraphPageItem maps Graph list-item fields into the publisher page
       BannerImageUrl: '/sites/GroveGuidance/SiteAssets/banner.png',
       OData__ModerationStatus: '0',
       PromotedState: '1',
+    },
+  );
+});
+
+test('findGraphSitePagesList matches the Site Pages library by internal name', () => {
+  assert.deepEqual(
+    findGraphSitePagesList([
+      { id: 'documents', displayName: 'Documents', name: 'Documents' },
+      { id: 'pages', displayName: 'Seiten', name: 'SitePages' },
+    ]),
+    { id: 'pages', displayName: 'Seiten', name: 'SitePages' },
+  );
+});
+
+test('findGraphSitePagesList matches the Site Pages library by webUrl path', () => {
+  assert.deepEqual(
+    findGraphSitePagesList([
+      { id: 'documents', displayName: 'Documents', name: 'Documents' },
+      {
+        id: 'pages',
+        displayName: 'Pages',
+        name: 'pages',
+        webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages',
+      },
+    ]),
+    {
+      id: 'pages',
+      displayName: 'Pages',
+      name: 'pages',
+      webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages',
     },
   );
 });
