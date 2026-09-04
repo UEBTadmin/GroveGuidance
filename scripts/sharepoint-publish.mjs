@@ -2,11 +2,36 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const DEFAULT_SP_TENANT_HOST = 'uebt.sharepoint.com';
 const DEFAULT_SP_SITE_PATH = '/sites/GroveGuidance';
 
-function resolveSharePointLocation(tenantHostValue, sitePathValue) {
+function normalizeSharePointSitePath(sitePathValue) {
+  let sitePath = (sitePathValue || '').trim();
+  if (!sitePath.startsWith('/')) {
+    sitePath = `/${sitePath}`;
+  }
+  sitePath = sitePath.replace(/\/+$/, '') || '/';
+  sitePath = sitePath.split(/\/(?:_api|_layouts)\b/i)[0] || '/';
+
+  const segments = sitePath.split('/').filter(Boolean);
+  while (segments.length > 0) {
+    const lastSegment = segments[segments.length - 1];
+    if (/\.aspx$/i.test(lastSegment) || /^forms$/i.test(lastSegment)) {
+      segments.pop();
+      continue;
+    }
+    if (/^sitepages$/i.test(lastSegment) || /^pages$/i.test(lastSegment)) {
+      segments.pop();
+    }
+    break;
+  }
+
+  return segments.length > 0 ? `/${segments.join('/')}` : '/';
+}
+
+export function resolveSharePointLocation(tenantHostValue, sitePathValue) {
   let tenantHost = (tenantHostValue || '').trim();
   let derivedSitePath = '';
 
@@ -41,11 +66,7 @@ function resolveSharePointLocation(tenantHostValue, sitePathValue) {
     }
   }
 
-  sitePath = sitePath || derivedSitePath || DEFAULT_SP_SITE_PATH;
-  if (!sitePath.startsWith('/')) {
-    sitePath = `/${sitePath}`;
-  }
-  sitePath = sitePath.replace(/\/+$/, '') || '/';
+  sitePath = normalizeSharePointSitePath(sitePath || derivedSitePath || DEFAULT_SP_SITE_PATH);
 
   return { tenantHost, sitePath };
 }
@@ -619,11 +640,13 @@ async function validate() {
   console.log('Validation passed.');
 }
 
-const command = process.argv[2] || 'sync';
-if (command === 'sync') {
-  await sync();
-} else if (command === 'validate') {
-  await validate();
-} else {
-  throw new Error(`Unknown command: ${command}`);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const command = process.argv[2] || 'sync';
+  if (command === 'sync') {
+    await sync();
+  } else if (command === 'validate') {
+    await validate();
+  } else {
+    throw new Error(`Unknown command: ${command}`);
+  }
 }
