@@ -149,6 +149,8 @@ export function normalizeGraphDriveKey(value) {
     .replace(/[^a-z0-9]+/g, '');
 }
 
+const SITE_PAGES_KEYS = new Set(['sitepages', 'pages']);
+
 function lastUrlPathSegment(webUrl) {
   if (!webUrl) return '';
   try {
@@ -163,7 +165,7 @@ function lastUrlPathSegment(webUrl) {
 export function findGraphSitePagesList(lists) {
   return (lists || []).find((list) => {
     const template = normalizeGraphDriveKey(list?.list?.template);
-    if (template === 'sitepages') {
+    if (SITE_PAGES_KEYS.has(template)) {
       return true;
     }
 
@@ -173,7 +175,7 @@ export function findGraphSitePagesList(lists) {
       lastUrlPathSegment(list?.webUrl),
     ].map(normalizeGraphDriveKey);
 
-    return candidateKeys.includes('sitepages');
+    return candidateKeys.some((key) => SITE_PAGES_KEYS.has(key));
   });
 }
 
@@ -189,7 +191,7 @@ export function resolveGraphSitePagesListId(lists, drives) {
       lastUrlPathSegment(drive?.webUrl),
     ].map(normalizeGraphDriveKey);
 
-    return candidateKeys.includes('sitepages');
+    return candidateKeys.some((key) => SITE_PAGES_KEYS.has(key));
   });
 
   return sitePagesDrive?.sharepointIds?.listId;
