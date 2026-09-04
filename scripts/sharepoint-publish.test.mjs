@@ -209,6 +209,28 @@ test('findGraphSitePagesList matches by Site Pages template when names are local
   );
 });
 
+test('findGraphSitePagesList matches by WebPageLibrary template when names are localized', () => {
+  assert.deepEqual(
+    findGraphSitePagesList([
+      { id: 'documents', displayName: 'Documents', name: 'Documents' },
+      {
+        id: 'localized-web-pages',
+        displayName: 'Websiteinhalte',
+        name: 'Bibliothek',
+        webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/Seiten',
+        list: { template: 'WebPageLibrary' },
+      },
+    ]),
+    {
+      id: 'localized-web-pages',
+      displayName: 'Websiteinhalte',
+      name: 'Bibliothek',
+      webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/Seiten',
+      list: { template: 'WebPageLibrary' },
+    },
+  );
+});
+
 test('resolveGraphSitePagesListId falls back to Site Pages drive metadata when list discovery misses it', () => {
   assert.equal(
     resolveGraphSitePagesListId(

@@ -170,10 +170,21 @@ function lastUrlPathSegment(webUrl) {
   }
 }
 
+function isGraphSitePagesTemplate(templateValue) {
+  const templateKey = normalizeGraphDriveKey(templateValue);
+  return Boolean(
+    templateKey
+    && (
+      SITE_PAGES_KEYS.has(templateKey)
+      || templateKey.endsWith('pagelibrary')
+      || templateKey.includes('sitepage')
+    )
+  );
+}
+
 export function findGraphSitePagesList(lists) {
   return (lists || []).find((list) => {
-    const template = normalizeGraphDriveKey(list?.list?.template);
-    if (SITE_PAGES_KEYS.has(template)) {
+    if (isGraphSitePagesTemplate(list?.list?.template)) {
       return true;
     }
 
@@ -210,8 +221,11 @@ export function getGraphSiteListsRelativeUrl(siteId) {
 }
 
 function shouldProbeGraphSitePagesList(list) {
-  const template = normalizeGraphDriveKey(list?.list?.template);
-  if (!template || template === 'documentlibrary' || SITE_PAGES_KEYS.has(template)) {
+  if (!list?.id) {
+    return false;
+  }
+
+  if (isGraphSitePagesTemplate(list?.list?.template)) {
     return true;
   }
 
@@ -221,7 +235,11 @@ function shouldProbeGraphSitePagesList(list) {
     lastUrlPathSegment(list?.webUrl),
   ].map(normalizeGraphDriveKey);
 
-  return candidateKeys.some((key) => key.includes('page'));
+  if (candidateKeys.some((key) => SITE_PAGES_KEYS.has(key) || key.includes('page'))) {
+    return true;
+  }
+
+  return true;
 }
 
 export function isGraphSitePageItem(item) {
@@ -591,7 +609,7 @@ async function probeGraphSitePagesListId(token, siteId, lists) {
     }
 
     try {
-      const rows = await graphList(token, `/sites/${siteId}/lists/${list.id}/items?$expand=fields&$top=5`);
+      const rows = await graphList(token, `/sites/${siteId}/lists/${list.id}/items?$expand=fields&$top=50`);
       if (rows.some(isGraphSitePageItem)) {
         return list.id;
       }
