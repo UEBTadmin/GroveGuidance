@@ -359,7 +359,11 @@ async function sharePointRequest(token, relativeUrl, responseType = 'json', atte
         return sharePointRequest(token, relativeUrl, responseType, attempt + 1);
       }
       
-      throw new Error(`SharePoint request failed (${response.status} ${response.statusText}) for ${url}`);
+      const error = new Error(`SharePoint request failed (${response.status} ${response.statusText}) for ${url}`);
+      error.status = response.status;
+      error.url = url;
+      error.responseBody = errorBody;
+      throw error;
     }
     
     if (responseType === 'buffer') {
@@ -399,7 +403,11 @@ async function graphRequest(token, relativeUrl, responseType = 'json', attempt =
         return graphRequest(token, relativeUrl, responseType, attempt + 1);
       }
 
-      throw new Error(`Graph request failed (${response.status} ${response.statusText}) for ${url}`);
+      const error = new Error(`Graph request failed (${response.status} ${response.statusText}) for ${url}`);
+      error.status = response.status;
+      error.url = url;
+      error.responseBody = errorBody;
+      throw error;
     }
 
     if (responseType === 'buffer') {
@@ -519,7 +527,19 @@ async function getPublishedPages(graphToken, getOptionalSharePointToken = async 
   if (!sharePointToken) {
     throw new Error('Graph page sync failed and no SharePoint token was available for fallback.');
   }
-  return getPublishedPagesFromSharePoint(sharePointToken);
+  try {
+    return await getPublishedPagesFromSharePoint(sharePointToken);
+  } catch (error) {
+    if (!isSharePointUnsupportedAppOnlyToken(error)) {
+      throw error;
+    }
+    throw new Error(
+      'Graph page sync was unauthorized and SharePoint REST fallback rejected the app-only token. '
+      + 'In Entra, grant this app Microsoft Graph application access to the target site '
+      + '(Sites.Read.All, or Sites.Selected plus a site-level grant) and admin-consent it. '
+      + 'SharePoint REST app-only with a client secret is not supported by this site.',
+    );
+  }
 }
 
 async function getNavigation(getOptionalSharePointToken = async () => undefined) {
@@ -712,6 +732,15 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
 function isGraphAuthFailure(error) {
   const message = String(error?.message || '');
   return /Graph request failed \((401|403)\b/i.test(message);
+}
+
+function isSharePointUnsupportedAppOnlyToken(error) {
+  const message = String(error?.message || '');
+  const responseBody = String(error?.responseBody || '');
+  return (
+    /SharePoint request failed \(401\b/i.test(message)
+    && /Unsupported app only token\./i.test(responseBody)
+  );
 }
 
 function isGraphAuthOrTransientFailure(error) {
