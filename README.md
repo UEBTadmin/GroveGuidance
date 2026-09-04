@@ -30,7 +30,7 @@ Add these repository secrets:
 - `SP_SITE_PATH`: Site path (for example `/sites/GroveGuidance`).
 - `AZURE_STATIC_WEB_APPS_API_TOKEN_VICTORIOUS_STONE_0501FF610`: Azure Static Web Apps deployment token.
 
-`SP_TENANT_HOST` and `SP_SITE_PATH` can also be provided as full SharePoint URLs; the publisher normalizes these values automatically to the SharePoint host and site root.
+`SP_TENANT_HOST` and `SP_SITE_PATH` can also be provided as full SharePoint URLs (including `SitePages`, library `Forms/AllItems.aspx`, and `/:w:/r/...` sharing-link formats); the publisher normalizes these values automatically to the SharePoint host and site root/subweb path.
 
 ## Azure AD app permissions
 
