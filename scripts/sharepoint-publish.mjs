@@ -6,6 +6,8 @@ import { pathToFileURL } from 'node:url';
 
 const DEFAULT_SP_TENANT_HOST = 'uebt.sharepoint.com';
 const DEFAULT_SP_SITE_PATH = '/sites/GroveGuidance';
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
 
 function normalizeSharePointSitePath(sitePathValue) {
   let sitePath = (sitePathValue || '').trim();
@@ -191,27 +193,57 @@ async function getAccessToken() {
     body,
   });
   if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`Token endpoint error (${response.status} ${response.statusText}):`, errorBody);
     throw new Error(`Could not obtain access token (${response.status} ${response.statusText})`);
   }
   const json = await response.json();
   return json.access_token;
 }
 
-async function sharePointRequest(token, relativeUrl, responseType = 'json') {
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function sharePointRequest(token, relativeUrl, responseType = 'json', attempt = 1) {
   const url = relativeUrl.startsWith('http') ? relativeUrl : `https://${config.tenantHost}${relativeUrl}`;
-  const response = await fetch(url, {
-    headers: {
-      authorization: 'Bearer ' + token,
-      accept: 'application/json;odata=nometadata',
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`SharePoint request failed (${response.status} ${response.statusText}) for ${url}`);
+  
+  try {
+    const response = await fetch(url, {
+      headers: {
+        authorization: 'Bearer ' + token,
+        accept: 'application/json;odata=nometadata',
+      },
+    });
+    
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`SharePoint request failed (${response.status} ${response.statusText}) for ${url}`);
+      console.error(`Response body: ${errorBody.substring(0, 500)}`);
+      
+      // Retry on transient errors (500, 502, 503, 504)
+      if ([500, 502, 503, 504].includes(response.status) && attempt < MAX_RETRIES) {
+        console.log(`Retrying SharePoint request (attempt ${attempt + 1}/${MAX_RETRIES}) after ${RETRY_DELAY_MS}ms...`);
+        await sleep(RETRY_DELAY_MS);
+        return sharePointRequest(token, relativeUrl, responseType, attempt + 1);
+      }
+      
+      throw new Error(`SharePoint request failed (${response.status} ${response.statusText}) for ${url}`);
+    }
+    
+    if (responseType === 'buffer') {
+      return Buffer.from(await response.arrayBuffer());
+    }
+    return response.json();
+  } catch (error) {
+    // Retry on network errors
+    if (attempt < MAX_RETRIES && error.message && !error.message.includes('401')) {
+      console.log(`Network error, retrying (attempt ${attempt + 1}/${MAX_RETRIES}):`, error.message);
+      await sleep(RETRY_DELAY_MS);
+      return sharePointRequest(token, relativeUrl, responseType, attempt + 1);
+    }
+    throw error;
   }
-  if (responseType === 'buffer') {
-    return Buffer.from(await response.arrayBuffer());
-  }
-  return response.json();
 }
 
 async function sharePointList(token, relativeUrl) {
@@ -421,7 +453,7 @@ function buildStaticWebAppConfig() {
       'x-content-type-options': 'nosniff',
       'x-frame-options': 'SAMEORIGIN',
       'referrer-policy': 'strict-origin-when-cross-origin',
-      'content-security-policy': "default-src 'self' https: data: blob:; img-src 'self' https: data: blob:; media-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' https:; frame-ancestors 'self';",
+      'content-security-policy': "default-src 'self' https: data: blob:; img-src 'self' https: data: blob:; media-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';",
     },
     routes: [
       {
