@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveSharePointLocation } from './sharepoint-publish.mjs';
+import {
+  normalizeGraphPageItem,
+  resolveSharePointLocation,
+  splitGraphAssetServerRelativePath,
+} from './sharepoint-publish.mjs';
 
 test('resolveSharePointLocation trims Site Pages URLs to the site root', () => {
   assert.deepEqual(
@@ -77,6 +81,54 @@ test('resolveSharePointLocation keeps subwebs from sharing-link style paths', ()
     {
       tenantHost: 'uebt.sharepoint.com',
       sitePath: '/sites/GroveGuidance/Subweb',
+    },
+  );
+});
+
+test('splitGraphAssetServerRelativePath extracts the library key and file path from encoded URLs', () => {
+  assert.deepEqual(
+    splitGraphAssetServerRelativePath(
+      '/sites/GroveGuidance/Shared%20Documents/Policies/Guide.pdf?download=1',
+      '/sites/GroveGuidance',
+    ),
+    {
+      driveLookupKey: 'shareddocuments',
+      itemPath: 'Policies/Guide.pdf',
+    },
+  );
+});
+
+test('normalizeGraphPageItem maps Graph list-item fields into the publisher page shape', () => {
+  assert.deepEqual(
+    normalizeGraphPageItem({
+      id: '42',
+      name: 'Home.aspx',
+      webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages/Home.aspx',
+      lastModifiedDateTime: '2026-09-04T10:00:00Z',
+      createdDateTime: '2026-09-04T09:00:00Z',
+      fields: {
+        Title: 'Home',
+        FileLeafRef: 'Home.aspx',
+        Description: 'Welcome',
+        CanvasContent1: '<div>Welcome</div>',
+        BannerImageUrl: '/sites/GroveGuidance/SiteAssets/banner.png',
+        _ModerationStatus: '0',
+        PromotedState: '1',
+      },
+    }),
+    {
+      Id: '42',
+      Title: 'Home',
+      FileLeafRef: 'Home.aspx',
+      FileRef: '/sites/GroveGuidance/SitePages/Home.aspx',
+      Modified: '2026-09-04T10:00:00Z',
+      Created: '2026-09-04T09:00:00Z',
+      FirstPublishedDate: undefined,
+      Description: 'Welcome',
+      CanvasContent1: '<div>Welcome</div>',
+      BannerImageUrl: '/sites/GroveGuidance/SiteAssets/banner.png',
+      OData__ModerationStatus: '0',
+      PromotedState: '1',
     },
   );
 });
