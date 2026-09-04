@@ -3,12 +3,6 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const requiredEnv = ['SP_TENANT_ID', 'SP_CLIENT_ID', 'SP_CLIENT_SECRET'];
-const missing = requiredEnv.filter((key) => !process.env[key]);
-if (missing.length > 0) {
-  throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-}
-
 const config = {
   tenantId: process.env.SP_TENANT_ID,
   clientId: process.env.SP_CLIENT_ID,
@@ -20,6 +14,14 @@ const config = {
   stateFile: path.resolve(process.cwd(), process.env.STATE_FILE || '.cache/sharepoint-sync-state.json'),
   pilotPageLimit: process.env.PILOT_PAGE_LIMIT ? Number(process.env.PILOT_PAGE_LIMIT) : undefined,
 };
+
+function assertSyncEnvironment() {
+  const requiredEnv = ['SP_TENANT_ID', 'SP_CLIENT_ID', 'SP_CLIENT_SECRET'];
+  const missing = requiredEnv.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+}
 
 const NAV_QUERIES = [
   `${config.sitePath}/_api/web/Navigation/QuickLaunch?$select=Title,Url`,
@@ -384,6 +386,7 @@ async function saveState(state) {
 }
 
 async function sync() {
+  assertSyncEnvironment();
   await ensureDir(config.outputDir);
   const state = await loadState();
   const token = await getAccessToken();
