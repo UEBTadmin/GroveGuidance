@@ -907,7 +907,11 @@ export function collectAssetCandidates(page) {
   }
   while ((match = hrefRegex.exec(content)) !== null) {
     // Internal page links (.aspx) are routed via rewriteUrls/pageRouteMap, not fetched as assets.
-    if (!/\.aspx($|\?|#)/i.test(match[2])) {
+    // SharePoint "sharing link" style URLs (e.g. /:x:/s/... or /%3ax%3a/s/...) reference files by an
+    // opaque share token rather than a server-relative path; they can't be resolved through the
+    // legacy REST API (which is permanently unavailable) and must be left as external links rather
+    // than downloaded as assets.
+    if (!/\.aspx($|\?|#)/i.test(match[2]) && !/^\/(?:%3[Aa]|:)[a-z](?:%3[Aa]|:)\//i.test(match[2])) {
       candidates.add(match[2]);
     }
   }
