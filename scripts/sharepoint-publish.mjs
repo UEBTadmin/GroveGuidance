@@ -337,6 +337,110 @@ export function normalizeGraphPageItem(item) {
   };
 }
 
+function extractWebPartTitle(properties) {
+  const html = properties?.titleHTML || properties?.htmlTitle;
+  if (html) return html;
+  if (properties?.title) return `<h2>${htmlEscape(properties.title)}</h2>`;
+  return '';
+}
+
+function renderWebPartItems(properties) {
+  const items = Array.isArray(properties?.items) ? properties.items : [];
+  const serverProcessedContent = properties?.serverProcessedContent;
+  const linkByKey = new Map();
+  for (const entry of serverProcessedContent?.links || []) {
+    if (entry?.key) linkByKey.set(entry.key, entry.value);
+  }
+  const textByKey = new Map();
+  for (const entry of serverProcessedContent?.searchablePlainTexts || []) {
+    if (entry?.key) textByKey.set(entry.key, entry.value);
+  }
+
+  if (items.length === 0) return '';
+
+  const listItems = items.map((item, index) => {
+    const title = textByKey.get(`items[${index}].title`) || item?.title || item?.description || `Item ${index + 1}`;
+    const url = linkByKey.get(`items[${index}].sourceItem.url`) || item?.sourceItem?.url || item?.url;
+    if (!url) {
+      return `<li>${htmlEscape(title)}</li>`;
+    }
+    return `<li><a href="${htmlEscape(url)}">${htmlEscape(title)}</a></li>`;
+  }).join('');
+
+  return `<ul class="webpart-items">${listItems}</ul>`;
+}
+
+function renderStandardWebPart(webpart) {
+  const properties = webpart?.data?.properties || {};
+  const title = extractWebPartTitle(properties);
+  const items = renderWebPartItems(properties);
+  if (!title && !items) return '';
+  return `<section class="webpart">${title}${items}</section>`;
+}
+
+function renderTextWebPart(webpart) {
+  const html = webpart?.innerHtml;
+  return html ? `<section class="webpart webpart-text">${html}</section>` : '';
+}
+
+function renderWebPart(webpart) {
+  const type = webpart?.['@odata.type'];
+  if (type === '#microsoft.graph.textWebPart') {
+    return renderTextWebPart(webpart);
+  }
+  if (type === '#microsoft.graph.standardWebPart') {
+    return renderStandardWebPart(webpart);
+  }
+  return '';
+}
+
+function renderCanvasColumn(column) {
+  return (column?.webparts || []).map(renderWebPart).filter(Boolean).join('');
+}
+
+function renderCanvasSection(section) {
+  const columnsHtml = (section?.columns || []).map(renderCanvasColumn).filter(Boolean).join('');
+  if (!columnsHtml) return '';
+  return `<div class="canvas-section">${columnsHtml}</div>`;
+}
+
+export function renderCanvasLayoutHtml(canvasLayout) {
+  if (!canvasLayout) return '';
+  const horizontalSections = canvasLayout.horizontalSections || [];
+  const verticalSectionHtml = canvasLayout.verticalSection
+    ? renderCanvasColumn(canvasLayout.verticalSection)
+    : '';
+  const horizontalHtml = horizontalSections.map(renderCanvasSection).filter(Boolean).join('');
+  return `${horizontalHtml}${verticalSectionHtml ? `<div class="canvas-section canvas-vertical">${verticalSectionHtml}</div>` : ''}`;
+}
+
+export function normalizeGraphSitePage(page) {
+  const canvasLayout = page?.canvasLayout;
+  return {
+    Id: page?.id,
+    Title: page?.title,
+    FileLeafRef: page?.name,
+    FileRef: page?.webUrl ? (() => {
+      try {
+        return new URL(page.webUrl).pathname;
+      } catch {
+        return page.webUrl;
+      }
+    })() : undefined,
+    Modified: page?.lastModifiedDateTime,
+    Created: page?.createdDateTime,
+    FirstPublishedDate: page?.createdDateTime,
+    Description: page?.description || '',
+    CanvasContent1: renderCanvasLayoutHtml(canvasLayout),
+    BannerImageUrl: page?.thumbnailWebUrl,
+    PublishingLevel: page?.publishingState?.level,
+  };
+}
+
+export function isPublishedGraphSitePage(page) {
+  return page?.publishingState?.level === 'published';
+}
+
 const resolvedSharePointLocation = resolveSharePointLocation(process.env.SP_TENANT_HOST, process.env.SP_SITE_PATH);
 
 const config = {
@@ -650,31 +754,27 @@ async function probeGraphSitePagesListId(token, siteId, lists) {
   return undefined;
 }
 
+async function getPublishedPagesViaGraphPagesApi(graphToken) {
+  const { siteId } = await getGraphSiteContext(graphToken);
+  const rows = await graphList(graphToken, `/sites/${siteId}/pages/microsoft.graph.sitePage?$expand=canvasLayout`);
+  const filtered = rows
+    .filter(isPublishedGraphSitePage)
+    .map(normalizeGraphSitePage)
+    .filter((row) => row.FileLeafRef && /\.aspx$/i.test(row.FileLeafRef))
+    .sort((left, right) => new Date(right.Modified || 0) - new Date(left.Modified || 0));
+  if (config.pilotPageLimit && Number.isFinite(config.pilotPageLimit)) {
+    return filtered.slice(0, Math.max(1, config.pilotPageLimit));
+  }
+  return filtered;
+}
+
 async function getPublishedPages(graphToken, getOptionalSharePointToken = async () => undefined) {
   let graphError;
   try {
-    const { siteId, sitePagesListId, lists } = await getGraphSiteContext(graphToken);
-    const resolvedSitePagesListId = sitePagesListId || await probeGraphSitePagesListId(graphToken, siteId, lists);
-    if (!resolvedSitePagesListId) {
-      throw new Error(`Could not locate the SharePoint "Site Pages" list for ${config.sitePath}`);
-    }
-    const rows = await graphList(graphToken, `/sites/${siteId}/lists/${resolvedSitePagesListId}/items?$expand=fields`);
-    const filtered = rows
-      .map(normalizeGraphPageItem)
-      .filter((row) => row.FileLeafRef && /\.aspx$/i.test(row.FileLeafRef))
-      .filter((row) => {
-        const moderation = Number(row.OData__ModerationStatus ?? row._ModerationStatus ?? 0);
-        const promoted = Number(row.PromotedState ?? 0);
-        return moderation === 0 && promoted !== 2;
-      })
-      .sort((left, right) => new Date(right.Modified || 0) - new Date(left.Modified || 0));
-    if (config.pilotPageLimit && Number.isFinite(config.pilotPageLimit)) {
-      return filtered.slice(0, Math.max(1, config.pilotPageLimit));
-    }
-    return filtered;
+    return await getPublishedPagesViaGraphPagesApi(graphToken);
   } catch (error) {
     graphError = error;
-    console.warn(`Graph page sync unavailable (${error.message}); falling back to SharePoint REST.`);
+    console.warn(`Graph Pages API page sync unavailable (${error.message}); falling back to SharePoint REST.`);
   }
 
   const sharePointToken = await getOptionalSharePointToken();
