@@ -450,3 +450,15 @@ test('collectAssetCandidates excludes internal .aspx page links from asset downl
   });
   assert.deepEqual(candidates, ['/sites/GroveGuidance/SiteAssets/banner.png']);
 });
+
+test('collectAssetCandidates excludes SharePoint sharing-link style hrefs from asset downloads', () => {
+  const candidates = collectAssetCandidates({
+    FileRef: '/sites/GroveGuidance/SitePages/Home.aspx',
+    CanvasContent1: '<ul>'
+      + '<li><a href="/%3ax%3a/s/PublicKnowledgeBase/IQDSPYiB2-iqQ4CQCcCPrnKWATQXQGq8hAbQPM-KLAV2vTE?e=zFl7XU">Knowledge Base</a></li>'
+      + '<li><a href="/:u:/r/sites/GroveGuidance/SitePages/Foo.aspx?d=1&amp;csf=1">Foo</a></li>'
+      + '<img src="/sites/GroveGuidance/SiteAssets/banner.png" />'
+      + '</ul>',
+  });
+  assert.deepEqual(candidates, ['/sites/GroveGuidance/SiteAssets/banner.png']);
+});
