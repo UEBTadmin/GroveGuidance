@@ -173,6 +173,18 @@ function getSiteRelativePathSegments(webUrl, sitePathValue = config.sitePath) {
   }
 }
 
+function lastUrlPathSegment(webUrl) {
+  if (!webUrl) return undefined;
+  try {
+    const pathname = new URL(webUrl).pathname;
+    const segments = pathname.split('/').filter(Boolean);
+    const last = segments.at(-1);
+    return last ? decodePathSegment(last) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function getGraphUrlCandidateKeys(webUrl) {
   const segments = getSiteRelativePathSegments(webUrl);
   const candidates = new Set();
