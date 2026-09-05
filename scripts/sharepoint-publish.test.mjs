@@ -5,7 +5,10 @@ import {
   findGraphSitePagesList,
   getGraphSiteListsRelativeUrl,
   isGraphSitePageItem,
+  isPublishedGraphSitePage,
   normalizeGraphPageItem,
+  normalizeGraphSitePage,
+  renderCanvasLayoutHtml,
   resolveGraphSitePagesListId,
   resolveSharePointLocation,
   splitGraphAssetServerRelativePath,
@@ -331,4 +334,106 @@ test('isGraphSitePageItem ignores non-page documents', () => {
     }),
     false,
   );
+});
+
+test('isPublishedGraphSitePage only accepts published pages', () => {
+  assert.equal(isPublishedGraphSitePage({ publishingState: { level: 'published' } }), true);
+  assert.equal(isPublishedGraphSitePage({ publishingState: { level: 'draft' } }), false);
+  assert.equal(isPublishedGraphSitePage({}), false);
+});
+
+test('renderCanvasLayoutHtml renders textWebPart innerHtml', () => {
+  const html = renderCanvasLayoutHtml({
+    horizontalSections: [
+      {
+        columns: [
+          {
+            webparts: [
+              { '@odata.type': '#microsoft.graph.textWebPart', innerHtml: '<h2>About</h2><p>Details</p>' },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  assert.match(html, /<h2>About<\/h2><p>Details<\/p>/);
+});
+
+test('renderCanvasLayoutHtml renders standardWebPart title and quick-link items', () => {
+  const html = renderCanvasLayoutHtml({
+    horizontalSections: [
+      {
+        columns: [
+          {
+            webparts: [
+              {
+                '@odata.type': '#microsoft.graph.standardWebPart',
+                data: {
+                  properties: {
+                    titleHTML: '<h2>Popular Guidance</h2>',
+                    items: [{ title: 'First Login' }],
+                    serverProcessedContent: {
+                      searchablePlainTexts: [{ key: 'items[0].title', value: 'First Login' }],
+                      links: [{ key: 'items[0].sourceItem.url', value: '/sites/GroveGuidance/SitePages/FirstLogin.aspx' }],
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  assert.match(html, /<h2>Popular Guidance<\/h2>/);
+  assert.match(html, /href="\/sites\/GroveGuidance\/SitePages\/FirstLogin\.aspx"/);
+  assert.match(html, />First Login<\/a>/);
+});
+
+test('renderCanvasLayoutHtml renders verticalSection webparts', () => {
+  const html = renderCanvasLayoutHtml({
+    horizontalSections: [],
+    verticalSection: {
+      webparts: [
+        { '@odata.type': '#microsoft.graph.textWebPart', innerHtml: '<p>Sidebar</p>' },
+      ],
+    },
+  });
+  assert.match(html, /<p>Sidebar<\/p>/);
+});
+
+test('renderCanvasLayoutHtml returns empty string for missing canvasLayout', () => {
+  assert.equal(renderCanvasLayoutHtml(undefined), '');
+});
+
+test('normalizeGraphSitePage maps a Graph site page into the publisher page shape', () => {
+  const page = normalizeGraphSitePage({
+    id: 'e40f8f2c-ae50-4282-8883-690e425229d9',
+    name: 'Home.aspx',
+    title: 'Home',
+    webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages/Home.aspx',
+    description: 'Welcome',
+    thumbnailWebUrl: 'https://uebt.sharepoint.com/thumb.jpg',
+    lastModifiedDateTime: '2026-09-04T10:00:00Z',
+    createdDateTime: '2026-09-04T09:00:00Z',
+    publishingState: { level: 'published' },
+    canvasLayout: {
+      horizontalSections: [
+        {
+          columns: [
+            { webparts: [{ '@odata.type': '#microsoft.graph.textWebPart', innerHtml: '<p>Welcome</p>' }] },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(page.Id, 'e40f8f2c-ae50-4282-8883-690e425229d9');
+  assert.equal(page.Title, 'Home');
+  assert.equal(page.FileLeafRef, 'Home.aspx');
+  assert.equal(page.FileRef, '/sites/GroveGuidance/SitePages/Home.aspx');
+  assert.equal(page.Description, 'Welcome');
+  assert.equal(page.BannerImageUrl, 'https://uebt.sharepoint.com/thumb.jpg');
+  assert.equal(page.PublishingLevel, 'published');
+  assert.match(page.CanvasContent1, /<p>Welcome<\/p>/);
 });
