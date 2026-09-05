@@ -159,15 +159,35 @@ const GRAPH_SITE_PAGE_SIGNALS = [
   'PromotedState',
 ];
 
-function lastUrlPathSegment(webUrl) {
-  if (!webUrl) return '';
+function getSiteRelativePathSegments(webUrl, sitePathValue = config.sitePath) {
+  if (!webUrl) return [];
   try {
     const pathname = new URL(webUrl).pathname;
-    const segments = pathname.split('/').filter(Boolean);
-    return segments.at(-1) || '';
+    const cleanSitePath = sitePathValue.replace(/\/+$/, '');
+    const relative = pathname.toLowerCase().startsWith(`${cleanSitePath.toLowerCase()}/`)
+      ? pathname.slice(cleanSitePath.length)
+      : pathname;
+    return relative.split('/').filter(Boolean).map(decodePathSegment);
   } catch {
-    return '';
+    return [];
   }
+}
+
+function getGraphUrlCandidateKeys(webUrl) {
+  const segments = getSiteRelativePathSegments(webUrl);
+  const candidates = new Set();
+  const first = segments[0];
+  const last = segments.at(-1);
+  const parent = segments.length > 1 ? segments.at(-2) : undefined;
+
+  for (const value of [first, last, /\.aspx$/i.test(last || '') ? parent : undefined]) {
+    const key = normalizeGraphDriveKey(value);
+    if (key) {
+      candidates.add(key);
+    }
+  }
+
+  return [...candidates];
 }
 
 function isGraphSitePagesTemplate(templateValue) {
@@ -191,8 +211,10 @@ export function findGraphSitePagesList(lists) {
     const candidateKeys = [
       list?.displayName,
       list?.name,
-      lastUrlPathSegment(list?.webUrl),
-    ].map(normalizeGraphDriveKey);
+      ...getGraphUrlCandidateKeys(list?.webUrl),
+    ]
+      .map(normalizeGraphDriveKey)
+      .filter(Boolean);
 
     return candidateKeys.some((key) => SITE_PAGES_KEYS.has(key));
   });
@@ -207,8 +229,10 @@ export function resolveGraphSitePagesListId(lists, drives) {
   const sitePagesDrive = (drives || []).find((drive) => {
     const candidateKeys = [
       drive?.name,
-      lastUrlPathSegment(drive?.webUrl),
-    ].map(normalizeGraphDriveKey);
+      ...getGraphUrlCandidateKeys(drive?.webUrl),
+    ]
+      .map(normalizeGraphDriveKey)
+      .filter(Boolean);
 
     return candidateKeys.some((key) => SITE_PAGES_KEYS.has(key));
   });
@@ -556,17 +580,7 @@ async function graphList(token, relativeUrl) {
 let graphSiteContextPromise;
 
 function firstDrivePathSegment(webUrl) {
-  if (!webUrl) return undefined;
-  try {
-    const pathname = new URL(webUrl).pathname;
-    const cleanSitePath = config.sitePath.replace(/\/+$/, '');
-    const relative = pathname.toLowerCase().startsWith(`${cleanSitePath.toLowerCase()}/`)
-      ? pathname.slice(cleanSitePath.length)
-      : pathname;
-    return relative.split('/').filter(Boolean)[0];
-  } catch {
-    return undefined;
-  }
+  return getSiteRelativePathSegments(webUrl)[0];
 }
 
 async function getGraphSiteContext(token) {

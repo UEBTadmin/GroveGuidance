@@ -167,6 +167,26 @@ test('findGraphSitePagesList matches the Site Pages library by webUrl path', () 
   );
 });
 
+test('findGraphSitePagesList matches the Site Pages library by default view webUrl path', () => {
+  assert.deepEqual(
+    findGraphSitePagesList([
+      { id: 'documents', displayName: 'Documents', name: 'Documents' },
+      {
+        id: 'pages',
+        displayName: 'Websiteinhalt',
+        name: 'Bibliothek',
+        webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages/Forms/AllItems.aspx',
+      },
+    ]),
+    {
+      id: 'pages',
+      displayName: 'Websiteinhalt',
+      name: 'Bibliothek',
+      webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages/Forms/AllItems.aspx',
+    },
+  );
+});
+
 test('findGraphSitePagesList matches a Pages library webUrl path', () => {
   assert.deepEqual(
     findGraphSitePagesList([
@@ -258,6 +278,21 @@ test('resolveGraphSitePagesListId accepts Pages drive metadata as fallback', () 
       }],
     ),
     'pages-list-id',
+  );
+});
+
+test('resolveGraphSitePagesListId accepts drive metadata when the webUrl is a library view page', () => {
+  assert.equal(
+    resolveGraphSitePagesListId(
+      [{ id: 'documents', displayName: 'Documents', name: 'Documents' }],
+      [{
+        id: 'pages-drive',
+        name: 'Websiteinhalt',
+        webUrl: 'https://uebt.sharepoint.com/sites/GroveGuidance/SitePages/Forms/ByAuthor.aspx',
+        sharepointIds: { listId: 'site-pages-list-id' },
+      }],
+    ),
+    'site-pages-list-id',
   );
 });
 
