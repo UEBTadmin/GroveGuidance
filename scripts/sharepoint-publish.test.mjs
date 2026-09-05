@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  collectAssetCandidates,
   findGraphSitePagesList,
   getGraphSiteListsRelativeUrl,
   isGraphSitePageItem,
@@ -436,4 +437,16 @@ test('normalizeGraphSitePage maps a Graph site page into the publisher page shap
   assert.equal(page.BannerImageUrl, 'https://uebt.sharepoint.com/thumb.jpg');
   assert.equal(page.PublishingLevel, 'published');
   assert.match(page.CanvasContent1, /<p>Welcome<\/p>/);
+});
+
+test('collectAssetCandidates excludes internal .aspx page links from asset downloads', () => {
+  const candidates = collectAssetCandidates({
+    FileRef: '/sites/GroveGuidance/SitePages/Home.aspx',
+    CanvasContent1: '<ul>'
+      + '<li><a href="/sites/GroveGuidance/SitePages/FirstLogin.aspx">First Login</a></li>'
+      + '<li><a href="/sites/GroveGuidance/SitePages/FirstLogin.aspx?query=1">First Login query</a></li>'
+      + '<img src="/sites/GroveGuidance/SiteAssets/banner.png" />'
+      + '</ul>',
+  });
+  assert.deepEqual(candidates, ['/sites/GroveGuidance/SiteAssets/banner.png']);
 });

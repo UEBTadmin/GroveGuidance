@@ -894,15 +894,22 @@ function normalizeToSharePointUrl(raw, pageFileRef) {
   return `${resolved.pathname}${resolved.search}`;
 }
 
-function collectAssetCandidates(page) {
+export function collectAssetCandidates(page) {
   const content = [page.CanvasContent1 || '', page.Description || '', extractBannerUrl(page) || ''].join('\n');
   const candidates = new Set();
-  const attrRegex = /(?:src|href|poster|data-src)=(["'])(.*?)\1/gi;
+  const srcRegex = /(?:src|poster|data-src)=(["'])(.*?)\1/gi;
+  const hrefRegex = /href=(["'])(.*?)\1/gi;
   const cssRegex = /url\((['"]?)(.*?)\1\)/gi;
 
   let match;
-  while ((match = attrRegex.exec(content)) !== null) {
+  while ((match = srcRegex.exec(content)) !== null) {
     candidates.add(match[2]);
+  }
+  while ((match = hrefRegex.exec(content)) !== null) {
+    // Internal page links (.aspx) are routed via rewriteUrls/pageRouteMap, not fetched as assets.
+    if (!/\.aspx($|\?|#)/i.test(match[2])) {
+      candidates.add(match[2]);
+    }
   }
   while ((match = cssRegex.exec(content)) !== null) {
     candidates.add(match[2]);
