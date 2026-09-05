@@ -261,10 +261,10 @@ test('resolveGraphSitePagesListId accepts Pages drive metadata as fallback', () 
   );
 });
 
-test('getGraphSiteListsRelativeUrl avoids unsupported Graph list expansion', () => {
+test('getGraphSiteListsRelativeUrl includes hidden lists without unsupported expansion', () => {
   assert.equal(
     getGraphSiteListsRelativeUrl('site-id'),
-    '/sites/site-id/lists?$select=id,displayName,name,webUrl,list',
+    '/sites/site-id/lists?includeHiddenLists=true&$select=id,displayName,name,webUrl,list',
   );
 });
 

@@ -217,7 +217,7 @@ export function resolveGraphSitePagesListId(lists, drives) {
 }
 
 export function getGraphSiteListsRelativeUrl(siteId) {
-  return `/sites/${siteId}/lists?$select=id,displayName,name,webUrl,list`;
+  return `/sites/${siteId}/lists?includeHiddenLists=true&$select=id,displayName,name,webUrl,list`;
 }
 
 function shouldProbeGraphSitePagesList(list) {
