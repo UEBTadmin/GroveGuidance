@@ -1,0 +1,58 @@
+[
+  {
+    "title": "Article structure",
+    "route": "/articlestructure/"
+  },
+  {
+    "title": "Audit Planning",
+    "route": "/audit-report-submission-1/"
+  },
+  {
+    "title": "Audit planning for Certification Bodies",
+    "route": "/audit-planning-for-certification-bodies/"
+  },
+  {
+    "title": "Audit Process",
+    "route": "/auditprocess/"
+  },
+  {
+    "title": "Audit Report",
+    "route": "/audit-report-submission/"
+  },
+  {
+    "title": "Certification Planning",
+    "route": "/certificationplanning/"
+  },
+  {
+    "title": "Certification workflow",
+    "route": "/certification-workflow-source-documents/"
+  },
+  {
+    "title": "Contact Support",
+    "route": "/contactsupport/"
+  },
+  {
+    "title": "FAQs",
+    "route": "/faqs/"
+  },
+  {
+    "title": "First Login",
+    "route": "/firstlogin/"
+  },
+  {
+    "title": "Login_Guidance_Updated Layout",
+    "route": "/copy-submission-of-scope-for-audit-planning/"
+  },
+  {
+    "title": "MFA Setup",
+    "route": "/mfasetup/"
+  },
+  {
+    "title": "Scope Submission by the CH",
+    "route": "/scope-submission-by-the-ch/"
+  },
+  {
+    "title": "Work Plan Submission",
+    "route": "/work-plan-submission/"
+  }
+]

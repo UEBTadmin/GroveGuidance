@@ -1214,13 +1214,22 @@ async function sync() {
       if (previousAsset && previousAsset.path === localAsset && await exists(outputPath)) {
         continue;
       }
-      const content = await getAssetContent(graphToken, getOptionalSharePointToken, assetUrl);
-      await ensureDir(path.dirname(outputPath));
-      await writeFile(outputPath, content);
-      currentAssetState[assetUrl] = {
-        path: localAsset,
-        fetchedAt: new Date().toISOString(),
-      };
+      try {
+        const content = await getAssetContent(graphToken, getOptionalSharePointToken, assetUrl);
+        await ensureDir(path.dirname(outputPath));
+        await writeFile(outputPath, content);
+        currentAssetState[assetUrl] = {
+          path: localAsset,
+          fetchedAt: new Date().toISOString(),
+        };
+      } catch (error) {
+        // A single unresolvable asset (e.g. an image in a library not exposed
+        // via Graph) must not abort the whole publish run. Log and leave the
+        // original SharePoint URL in place for this asset instead of rewriting it.
+        console.warn(`Skipping asset (could not download): ${assetUrl} — ${error.message}`);
+        replacements.delete(assetUrl);
+        delete currentAssetState[assetUrl];
+      }
     }
   }
 
