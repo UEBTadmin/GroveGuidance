@@ -5,6 +5,7 @@
   "description": "SharePoint-to-static publish pipeline for Grove Guidance",
   "scripts": {
     "publish:sync": "node ./scripts/sharepoint-publish.mjs sync",
-    "publish:validate": "node ./scripts/sharepoint-publish.mjs validate"
+    "publish:validate": "node ./scripts/sharepoint-publish.mjs validate",
+    "wordpress:export": "node ./scripts/sharepoint-wordpress-export.mjs"
   }
 }

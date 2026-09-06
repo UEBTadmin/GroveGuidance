@@ -65,3 +65,31 @@ npm run publish:validate
 ```
 
 Environment variables required locally match the secrets listed above.
+
+## One-time WordPress migration export
+
+`scripts/sharepoint-wordpress-export.mjs` is a standalone tool (not part of the ongoing sync
+pipeline above) for migrating the published pages off SharePoint entirely, e.g. to a
+self-hosted WordPress site. It reuses the same Graph Pages API access as the sync pipeline to
+produce a WordPress WXR import file plus downloaded media assets:
+
+```bash
+npm run wordpress:export
+```
+
+Required environment variables: `SP_TENANT_ID`, `SP_CLIENT_ID`, `SP_CLIENT_SECRET` (same as
+the sync pipeline). Optional: `SP_TENANT_HOST`, `SP_SITE_PATH`, `PUBLIC_BASE_URL`,
+`WP_SITE_TITLE`, `WP_EXPORT_DIR` (default `wp-export`).
+
+Output (under `WP_EXPORT_DIR`):
+- `wordpress-export.xml` - WXR file; import via WordPress **Tools > Import > WordPress**.
+- `media/` - every referenced image/asset, downloaded and renamed to match the
+  `<wp:attachment_url>` placeholders baked into the XML. Upload these to your WordPress
+  media library (or place at `wp-content/uploads/grove-guidance-import/` to match the URLs
+  already rewritten into the imported page content).
+- `navigation.json` - a simple label/slug list derived from the published pages, since WXR
+  does not reliably carry SharePoint's QuickLaunch navigation structure. Recreate this menu
+  manually under WordPress **Appearance > Menus**.
+
+This is intended to be run once as a migration step, not on a schedule - after import,
+WordPress (not SharePoint) becomes the source of truth for page content.

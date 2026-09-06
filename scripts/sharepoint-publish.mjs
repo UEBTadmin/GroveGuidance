@@ -540,7 +540,7 @@ function slugify(value = '') {
     .replace(/^[-/]+|[-/]+$/g, '');
 }
 
-function routeFromPage(page) {
+export function routeFromPage(page) {
   const fileRef = page.FileRef || '';
   const markerIndex = fileRef.toLowerCase().indexOf('/sitepages/');
   const relativeRef = markerIndex >= 0 ? fileRef.slice(markerIndex + '/sitepages/'.length) : page.FileLeafRef || '';
@@ -605,7 +605,7 @@ async function getAccessToken(scope) {
   return json.access_token;
 }
 
-async function getGraphAccessToken() {
+export async function getGraphAccessToken() {
   return getAccessToken('https://graph.microsoft.com/.default');
 }
 
@@ -735,7 +735,7 @@ function firstDrivePathSegment(webUrl) {
   return getSiteRelativePathSegments(webUrl)[0];
 }
 
-async function getGraphSiteContext(token) {
+export async function getGraphSiteContext(token) {
   if (!graphSiteContextPromise) {
     graphSiteContextPromise = (async () => {
       const site = await graphRequest(token, `/sites/${config.tenantHost}:${config.sitePath}?$select=id`);
@@ -790,7 +790,7 @@ async function probeGraphSitePagesListId(token, siteId, lists) {
   return undefined;
 }
 
-async function getPublishedPagesViaGraphPagesApi(graphToken) {
+export async function getPublishedPagesViaGraphPagesApi(graphToken) {
   const { siteId } = await getGraphSiteContext(graphToken);
   const rows = await graphList(graphToken, `/sites/${siteId}/pages/microsoft.graph.sitePage?$expand=canvasLayout`);
   const filtered = rows
@@ -860,7 +860,7 @@ async function getNavigation(getOptionalSharePointToken = async () => undefined)
   return [...unique.values()];
 }
 
-async function getAssetContent(graphToken, getOptionalSharePointToken, serverUrl) {
+export async function getAssetContent(graphToken, getOptionalSharePointToken, serverUrl) {
   let graphContext;
   try {
     graphContext = await getGraphSiteContext(graphToken);
