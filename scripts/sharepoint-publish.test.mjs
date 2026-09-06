@@ -508,6 +508,41 @@ test('renderCanvasLayoutHtml renders hero/card web part content items with image
   assert.match(html, /<h2>First Login<\/h2>/);
 });
 
+test('renderCanvasLayoutHtml renders standalone Image web part with caption', () => {
+  const html = renderCanvasLayoutHtml({
+    horizontalSections: [
+      {
+        columns: [
+          {
+            webparts: [
+              {
+                '@odata.type': '#microsoft.graph.standardWebPart',
+                data: {
+                  properties: {
+                    captionText: 'Scope submission diagram',
+                    altText: 'Diagram of the scope submission process',
+                  },
+                  serverProcessedContent: {
+                    imageSources: [
+                      { key: 'imageSource', value: '/sites/GroveGuidance/SiteAssets/SitePages/scope-diagram.png' },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.match(
+    html,
+    /<img src="\/sites\/GroveGuidance\/SiteAssets\/SitePages\/scope-diagram\.png" alt="Diagram of the scope submission process" \/>/,
+  );
+  assert.match(html, /<figcaption>Scope submission diagram<\/figcaption>/);
+});
+
 test('navLinksFromPages builds a nav menu from published pages, excluding the home route', () => {
   const links = navLinksFromPages([
     { Title: 'Home', FileRef: '/sites/GroveGuidance/SitePages/Home.aspx' },
