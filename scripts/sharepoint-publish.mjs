@@ -936,7 +936,33 @@ export async function getAssetContent(graphToken, getOptionalSharePointToken, se
     return sharePointRequest(sharePointToken, serverUrl, 'buffer');
   }
 
+  // Last resort: Graph's "shares" API resolves any absolute URL the app has access to directly to
+  // a DriveItem, without needing to already know which drive/list backs it. This is the only way
+  // to reach hidden default libraries (e.g. Site Assets) that some tenants don't expose via
+  // /sites/{id}/drives or /sites/{id}/lists at all.
+  try {
+    return await getAssetContentViaSharesApi(graphToken, serverUrl);
+  } catch (error) {
+    if (!isGraphAuthOrTransientFailure(error)) {
+      throw error;
+    }
+  }
+
   throw new Error(`Could not resolve SharePoint asset for download: ${serverUrl}`);
+}
+
+export function encodeGraphShareId(absoluteUrl) {
+  const base64 = Buffer.from(absoluteUrl, 'utf8').toString('base64')
+    .replace(/=/g, '')
+    .replace(/\//g, '_')
+    .replace(/\+/g, '-');
+  return `u!${base64}`;
+}
+
+async function getAssetContentViaSharesApi(graphToken, serverUrl) {
+  const absoluteUrl = `https://${config.tenantHost}${serverUrl.startsWith('/') ? serverUrl : `/${serverUrl}`}`;
+  const shareId = encodeGraphShareId(absoluteUrl);
+  return graphRequest(graphToken, `/shares/${shareId}/driveItem/content`, 'buffer');
 }
 
 function normalizeToSharePointUrl(raw, pageFileRef) {

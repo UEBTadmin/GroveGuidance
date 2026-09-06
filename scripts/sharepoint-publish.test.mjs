@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   collectAssetCandidates,
+  encodeGraphShareId,
   findGraphSitePagesList,
   getGraphSiteListsRelativeUrl,
   isGraphSitePageItem,
@@ -15,6 +16,15 @@ import {
   resolveSharePointLocation,
   splitGraphAssetServerRelativePath,
 } from './sharepoint-publish.mjs';
+
+test('encodeGraphShareId produces the unpadded base64url "u!" share id Graph expects', () => {
+  // Reference value independently verified against Microsoft Graph's documented shares encoding
+  // (base64, then url-safe substitutions, then strip padding, prefixed with "u!").
+  const url = 'https://uebt.sharepoint.com/sites/GroveGuidance/SiteAssets/SitePages/Home/1341352387Picture-7.jpg';
+  const expected = `u!${Buffer.from(url, 'utf8').toString('base64').replace(/=/g, '').replace(/\//g, '_').replace(/\+/g, '-')}`;
+  assert.equal(encodeGraphShareId(url), expected);
+  assert.match(encodeGraphShareId(url), /^u![A-Za-z0-9_-]+$/);
+});
 
 test('resolveSharePointLocation trims Site Pages URLs to the site root', () => {
   assert.deepEqual(
