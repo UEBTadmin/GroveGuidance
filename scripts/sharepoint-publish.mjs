@@ -344,9 +344,8 @@ function extractWebPartTitle(properties) {
   return '';
 }
 
-function renderWebPartItems(properties) {
+function renderWebPartItems(properties, serverProcessedContent) {
   const items = Array.isArray(properties?.items) ? properties.items : [];
-  const serverProcessedContent = properties?.serverProcessedContent;
   const linkByKey = new Map();
   for (const entry of serverProcessedContent?.links || []) {
     if (entry?.key) linkByKey.set(entry.key, entry.value);
@@ -370,12 +369,49 @@ function renderWebPartItems(properties) {
   return `<ul class="webpart-items">${listItems}</ul>`;
 }
 
+// Hero/quick-links card web parts (e.g. the "Hero" layout) store their cards in
+// properties.content[] rather than properties.items[], with matching serverProcessedContent
+// keys of the form content[n].title / content[n].link / content[n].image.url.
+function renderHeroWebPart(properties, serverProcessedContent) {
+  const content = Array.isArray(properties?.content) ? properties.content : [];
+  if (content.length === 0) return '';
+
+  const linkByKey = new Map();
+  for (const entry of serverProcessedContent?.links || []) {
+    if (entry?.key) linkByKey.set(entry.key, entry.value);
+  }
+  const textByKey = new Map();
+  for (const entry of serverProcessedContent?.searchablePlainTexts || []) {
+    if (entry?.key) textByKey.set(entry.key, entry.value);
+  }
+  const imageByKey = new Map();
+  for (const entry of serverProcessedContent?.imageSources || []) {
+    if (entry?.key) imageByKey.set(entry.key, entry.value);
+  }
+
+  const cards = content.map((item, index) => {
+    const titleHtml = item?.titleHTML || htmlEscape(textByKey.get(`content[${index}].title`) || item?.title || '');
+    const descriptionHtml = item?.descriptionHTML || htmlEscape(item?.description || '');
+    const url = linkByKey.get(`content[${index}].link`) || item?.sourceItem?.url;
+    const imageUrl = imageByKey.get(`content[${index}].image.url`) || item?.image?.resolvedUrl;
+    const imageHtml = imageUrl ? `<img src="${htmlEscape(imageUrl)}" alt="" />` : '';
+    const body = `${imageHtml}${titleHtml}${descriptionHtml}`;
+    return url
+      ? `<div class="webpart-card"><a href="${htmlEscape(url)}">${body}</a></div>`
+      : `<div class="webpart-card">${body}</div>`;
+  }).join('');
+
+  return `<div class="webpart-cards">${cards}</div>`;
+}
+
 function renderStandardWebPart(webpart) {
   const properties = webpart?.data?.properties || {};
+  const serverProcessedContent = webpart?.data?.serverProcessedContent;
   const title = extractWebPartTitle(properties);
-  const items = renderWebPartItems(properties);
-  if (!title && !items) return '';
-  return `<section class="webpart">${title}${items}</section>`;
+  const items = renderWebPartItems(properties, serverProcessedContent);
+  const cards = renderHeroWebPart(properties, serverProcessedContent);
+  if (!title && !items && !cards) return '';
+  return `<section class="webpart">${title}${items}${cards}</section>`;
 }
 
 function renderTextWebPart(webpart) {
@@ -504,7 +540,7 @@ function slugify(value = '') {
     .replace(/^[-/]+|[-/]+$/g, '');
 }
 
-function routeFromPage(page) {
+export function routeFromPage(page) {
   const fileRef = page.FileRef || '';
   const markerIndex = fileRef.toLowerCase().indexOf('/sitepages/');
   const relativeRef = markerIndex >= 0 ? fileRef.slice(markerIndex + '/sitepages/'.length) : page.FileLeafRef || '';
@@ -569,7 +605,7 @@ async function getAccessToken(scope) {
   return json.access_token;
 }
 
-async function getGraphAccessToken() {
+export async function getGraphAccessToken() {
   return getAccessToken('https://graph.microsoft.com/.default');
 }
 
@@ -699,7 +735,7 @@ function firstDrivePathSegment(webUrl) {
   return getSiteRelativePathSegments(webUrl)[0];
 }
 
-async function getGraphSiteContext(token) {
+export async function getGraphSiteContext(token) {
   if (!graphSiteContextPromise) {
     graphSiteContextPromise = (async () => {
       const site = await graphRequest(token, `/sites/${config.tenantHost}:${config.sitePath}?$select=id`);
@@ -754,7 +790,7 @@ async function probeGraphSitePagesListId(token, siteId, lists) {
   return undefined;
 }
 
-async function getPublishedPagesViaGraphPagesApi(graphToken) {
+export async function getPublishedPagesViaGraphPagesApi(graphToken) {
   const { siteId } = await getGraphSiteContext(graphToken);
   const rows = await graphList(graphToken, `/sites/${siteId}/pages/microsoft.graph.sitePage?$expand=canvasLayout`);
   const filtered = rows
@@ -824,7 +860,7 @@ async function getNavigation(getOptionalSharePointToken = async () => undefined)
   return [...unique.values()];
 }
 
-async function getAssetContent(graphToken, getOptionalSharePointToken, serverUrl) {
+export async function getAssetContent(graphToken, getOptionalSharePointToken, serverUrl) {
   let graphContext;
   try {
     graphContext = await getGraphSiteContext(graphToken);
@@ -983,6 +1019,12 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
     nav a{text-decoration:none;color:#0f4f8c}
     main{max-width:1024px;margin:0 auto;padding:1.5rem}
     .unsupported{border-left:4px solid #ffb020;background:#fff3e0;padding:.75rem 1rem;margin:1rem 0}
+    img{max-width:100%;height:auto}
+    .webpart-cards{display:flex;flex-wrap:wrap;gap:1rem}
+    .webpart-card{flex:1 1 220px;border:1px solid #d5d9de;border-radius:.5rem;overflow:hidden}
+    .webpart-card a{color:inherit;text-decoration:none;display:block}
+    .webpart-card img{display:block;width:100%}
+    .webpart-card h2{padding:0 .75rem}
   </style>
 </head>
 <body>
@@ -1047,6 +1089,16 @@ function mapNavigationLinks(navItems, pageRouteMap) {
     }
   }
   return links;
+}
+
+// Legacy SharePoint navigation (QuickLaunch/TopNavigationBar) is only reachable via the
+// permanently-retired REST API, so it can never be populated. Build a reasonable nav menu
+// directly from the published pages themselves so the site still has a working menu.
+export function navLinksFromPages(pages) {
+  return pages
+    .map((page) => ({ title: page.Title || page.FileLeafRef, route: routeFromPage(page) }))
+    .filter((link) => link.route !== '/')
+    .sort((a, b) => a.title.localeCompare(b.title));
 }
 
 function buildSitemap(routes) {
@@ -1137,6 +1189,7 @@ async function sync() {
   }
 
   const navLinks = mapNavigationLinks(navItems, pageRouteMap);
+  const effectiveNavLinks = navLinks.length > 0 ? navLinks : navLinksFromPages(pages);
 
   const currentPageState = {};
   const currentAssetState = { ...state.assets };
@@ -1196,7 +1249,7 @@ async function sync() {
         description: page.Description || '',
         content: rewrittenContent,
         canonicalUrl: canonicalFromRoute(route),
-        navLinks,
+        navLinks: effectiveNavLinks,
       });
       await ensureDir(path.dirname(outputFile));
       await writeFile(outputFile, html, 'utf8');
@@ -1220,7 +1273,7 @@ async function sync() {
     description: 'The requested page does not exist.',
     content: '<p>The requested page does not exist.</p><p><a href="/">Return to home</a></p>',
     canonicalUrl: `${config.publicBaseUrl}/404`,
-    navLinks,
+    navLinks: effectiveNavLinks,
   }), 'utf8');
 
   await saveState({

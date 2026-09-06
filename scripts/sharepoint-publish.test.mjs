@@ -7,6 +7,7 @@ import {
   getGraphSiteListsRelativeUrl,
   isGraphSitePageItem,
   isPublishedGraphSitePage,
+  navLinksFromPages,
   normalizeGraphPageItem,
   normalizeGraphSitePage,
   renderCanvasLayoutHtml,
@@ -373,10 +374,10 @@ test('renderCanvasLayoutHtml renders standardWebPart title and quick-link items'
                   properties: {
                     titleHTML: '<h2>Popular Guidance</h2>',
                     items: [{ title: 'First Login' }],
-                    serverProcessedContent: {
-                      searchablePlainTexts: [{ key: 'items[0].title', value: 'First Login' }],
-                      links: [{ key: 'items[0].sourceItem.url', value: '/sites/GroveGuidance/SitePages/FirstLogin.aspx' }],
-                    },
+                  },
+                  serverProcessedContent: {
+                    searchablePlainTexts: [{ key: 'items[0].title', value: 'First Login' }],
+                    links: [{ key: 'items[0].sourceItem.url', value: '/sites/GroveGuidance/SitePages/FirstLogin.aspx' }],
                   },
                 },
               },
@@ -461,4 +462,51 @@ test('collectAssetCandidates excludes SharePoint sharing-link style hrefs from a
       + '</ul>',
   });
   assert.deepEqual(candidates, ['/sites/GroveGuidance/SiteAssets/banner.png']);
+});
+
+test('renderCanvasLayoutHtml renders hero/card web part content items with image and link', () => {
+  const html = renderCanvasLayoutHtml({
+    horizontalSections: [
+      {
+        columns: [
+          {
+            webparts: [
+              {
+                '@odata.type': '#microsoft.graph.standardWebPart',
+                data: {
+                  properties: {
+                    content: [
+                      { titleHTML: '<h2>First Login</h2>' },
+                    ],
+                  },
+                  serverProcessedContent: {
+                    searchablePlainTexts: [{ key: 'content[0].title', value: 'First Login' }],
+                    links: [{ key: 'content[0].link', value: '/sites/GroveGuidance/SitePages/First-Login.aspx' }],
+                    imageSources: [{ key: 'content[0].image.url', value: '/sites/GroveGuidance/SiteAssets/SitePages/Home/pic.jpg' }],
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.match(html, /<img src="\/sites\/GroveGuidance\/SiteAssets\/SitePages\/Home\/pic\.jpg" alt="" \/>/);
+  assert.match(html, /<a href="\/sites\/GroveGuidance\/SitePages\/First-Login\.aspx">/);
+  assert.match(html, /<h2>First Login<\/h2>/);
+});
+
+test('navLinksFromPages builds a nav menu from published pages, excluding the home route', () => {
+  const links = navLinksFromPages([
+    { Title: 'Home', FileRef: '/sites/GroveGuidance/SitePages/Home.aspx' },
+    { Title: 'First Login', FileRef: '/sites/GroveGuidance/SitePages/First-Login.aspx' },
+    { Title: 'Scope Submission', FileRef: '/sites/GroveGuidance/SitePages/Scope-Submission.aspx' },
+  ]);
+
+  assert.deepEqual(links, [
+    { title: 'First Login', route: '/first-login/' },
+    { title: 'Scope Submission', route: '/scope-submission/' },
+  ]);
 });
