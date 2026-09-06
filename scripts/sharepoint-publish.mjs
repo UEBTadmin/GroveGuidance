@@ -404,14 +404,33 @@ function renderHeroWebPart(properties, serverProcessedContent) {
   return `<div class="webpart-cards">${cards}</div>`;
 }
 
+// The "Image" web part (a single embedded picture, not part of a hero/quick-links list) stores its
+// picture reference in serverProcessedContent.imageSources under the "imageSource" key, with the
+// caption/alt text on properties.captionText/altText.
+function renderImageWebPart(properties, serverProcessedContent) {
+  const imageByKey = new Map();
+  for (const entry of serverProcessedContent?.imageSources || []) {
+    if (entry?.key) imageByKey.set(entry.key, entry.value);
+  }
+  const imageUrl = imageByKey.get('imageSource') || properties?.imageSource;
+  if (!imageUrl) return '';
+
+  const alt = properties?.altText || properties?.captionText || '';
+  const caption = properties?.captionText
+    ? `<figcaption>${htmlEscape(properties.captionText)}</figcaption>`
+    : '';
+  return `<figure class="webpart-image"><img src="${htmlEscape(imageUrl)}" alt="${htmlEscape(alt)}" />${caption}</figure>`;
+}
+
 function renderStandardWebPart(webpart) {
   const properties = webpart?.data?.properties || {};
   const serverProcessedContent = webpart?.data?.serverProcessedContent;
   const title = extractWebPartTitle(properties);
   const items = renderWebPartItems(properties, serverProcessedContent);
   const cards = renderHeroWebPart(properties, serverProcessedContent);
-  if (!title && !items && !cards) return '';
-  return `<section class="webpart">${title}${items}${cards}</section>`;
+  const image = renderImageWebPart(properties, serverProcessedContent);
+  if (!title && !items && !cards && !image) return '';
+  return `<section class="webpart">${title}${items}${cards}${image}</section>`;
 }
 
 function renderTextWebPart(webpart) {
@@ -1094,6 +1113,8 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
     .webpart-card a{color:inherit;text-decoration:none;display:block}
     .webpart-card img{display:block;width:100%}
     .webpart-card h2{padding:0 .75rem}
+    .webpart-image{margin:0 0 1rem}
+    .webpart-image figcaption{color:#555;font-size:.9rem;margin-top:.35rem}
   </style>
 </head>
 <body>
