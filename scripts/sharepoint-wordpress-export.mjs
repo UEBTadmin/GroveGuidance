@@ -33,6 +33,7 @@ import {
   getPublishedPagesViaGraphPagesApi,
   navLinksFromPages,
   routeFromPage,
+  rewriteUrls,
 } from './sharepoint-publish.mjs';
 
 const outputDir = path.resolve(process.cwd(), process.env.WP_EXPORT_DIR || 'wp-export');
@@ -98,8 +99,11 @@ async function downloadMedia(pages, graphToken) {
   return assetMap;
 }
 
-export function rewriteContentForWordPress(content, assetMap) {
-  let rewritten = content || '';
+export function rewriteContentForWordPress(content, assetMap, pageRouteMap = new Map()) {
+  // First rewrite internal .aspx page links to their WordPress-relative slugs (reusing the same
+  // logic the static-site pipeline uses), then swap SharePoint asset URLs for their WordPress
+  // media URLs.
+  let rewritten = rewriteUrls(content || '', new Map(), pageRouteMap);
   for (const [sharePointUrl, { mediaUrl }] of assetMap.entries()) {
     rewritten = rewritten.split(sharePointUrl).join(mediaUrl);
   }
@@ -132,11 +136,11 @@ function buildAttachmentItem(assetUrl, entry, pubDate) {
     </item>`;
 }
 
-function buildPageItem(page, assetMap, index) {
+function buildPageItem(page, assetMap, pageRouteMap, index) {
   const route = routeFromPage(page);
   const slug = slugFromRoute(route);
   const title = page.Title || page.FileLeafRef || slug;
-  const content = rewriteContentForWordPress(page.CanvasContent1, assetMap);
+  const content = rewriteContentForWordPress(page.CanvasContent1, assetMap, pageRouteMap);
   const pubDate = page.FirstPublishedDate || page.Created || new Date().toISOString();
   const modDate = page.Modified || pubDate;
 
@@ -172,10 +176,17 @@ function buildPageItem(page, assetMap, index) {
 
 export function buildWxr(pages, assetMap) {
   const now = new Date().toUTCString();
+  const pageRouteMap = new Map();
+  for (const page of pages) {
+    const key = (page.FileRef || '').toLowerCase();
+    if (key) {
+      pageRouteMap.set(key, routeFromPage(page));
+    }
+  }
   const attachmentItems = [...assetMap.entries()]
     .map(([assetUrl, entry]) => buildAttachmentItem(assetUrl, entry, now))
     .join('\n');
-  const pageItems = pages.map((page, index) => buildPageItem(page, assetMap, index)).join('\n');
+  const pageItems = pages.map((page, index) => buildPageItem(page, assetMap, pageRouteMap, index)).join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"

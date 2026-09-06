@@ -35,6 +35,45 @@ test('rewriteContentForWordPress replaces SharePoint asset URLs with their WordP
   assert.equal(rewritten, '<img src="https://example.com/wp-content/uploads/grove-guidance-import/banner.png" />');
 });
 
+test('rewriteContentForWordPress rewrites internal .aspx page links to WordPress-relative slugs', () => {
+  const pageRouteMap = new Map([
+    ['/sites/groveguidance/sitepages/certificationplanning.aspx', '/certificationplanning/'],
+  ]);
+  const rewritten = rewriteContentForWordPress(
+    '<a href="/sites/GroveGuidance/SitePages/CertificationPlanning.aspx">Certification Planning</a>',
+    new Map(),
+    pageRouteMap,
+  );
+  assert.equal(rewritten, '<a href="/certificationplanning/">Certification Planning</a>');
+});
+
+test('buildWxr rewrites internal page links between pages in the export', () => {
+  const pages = [
+    {
+      Id: '1',
+      Title: 'Home',
+      FileRef: '/sites/GroveGuidance/SitePages/Home.aspx',
+      FileLeafRef: 'Home.aspx',
+      CanvasContent1: '<a href="/sites/GroveGuidance/SitePages/CertificationPlanning.aspx">Certification Planning</a>',
+      Created: '2026-01-01T00:00:00Z',
+      Modified: '2026-01-02T00:00:00Z',
+    },
+    {
+      Id: '2',
+      Title: 'Certification Planning',
+      FileRef: '/sites/GroveGuidance/SitePages/CertificationPlanning.aspx',
+      FileLeafRef: 'CertificationPlanning.aspx',
+      CanvasContent1: '<p>Planning guidance</p>',
+      Created: '2026-01-01T00:00:00Z',
+      Modified: '2026-01-02T00:00:00Z',
+    },
+  ];
+
+  const xml = buildWxr(pages, new Map());
+  assert.match(xml, /href="\/certificationplanning\/"/);
+  assert.doesNotMatch(xml, /href="[^"]*\.aspx"/);
+});
+
 test('buildWxr produces a WXR document with page and attachment items', () => {
   const pages = [
     {

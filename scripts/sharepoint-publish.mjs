@@ -756,11 +756,29 @@ export async function getGraphSiteContext(token) {
         }
       }
 
+      // Hidden document libraries (e.g. "Site Assets", "Style Library") are commonly omitted
+      // from /sites/{id}/drives entirely, even though they're regular document libraries with
+      // their own drive. They ARE returned by /sites/{id}/lists?includeHiddenLists=true, so
+      // resolve their drive lazily on demand via the list -> drive relationship and cache it.
+      const documentLibraryListsByKey = new Map();
+      for (const list of lists) {
+        if (!isGraphSitePagesTemplate(list?.list?.template) && list?.list?.template !== 'documentLibrary') {
+          continue;
+        }
+        for (const candidate of [list.displayName, list.name, ...getGraphUrlCandidateKeys(list.webUrl)]) {
+          const key = normalizeGraphDriveKey(candidate);
+          if (key && !drivesByKey.has(key) && !documentLibraryListsByKey.has(key)) {
+            documentLibraryListsByKey.set(key, list);
+          }
+        }
+      }
+
       return {
         siteId: site.id,
         sitePagesListId,
         lists,
         drivesByKey,
+        documentLibraryListsByKey,
       };
     })();
   }
@@ -860,6 +878,28 @@ async function getNavigation(getOptionalSharePointToken = async () => undefined)
   return [...unique.values()];
 }
 
+// Some document libraries (notably the default hidden "Site Assets" library) aren't returned by
+// /sites/{id}/drives at all, even though they have a perfectly usable drive. When a library isn't
+// in drivesByKey but IS a known document-library list, resolve (and cache) its drive via the
+// list's /drive relationship so its files can still be downloaded through Graph.
+async function resolveHiddenLibraryDrive(graphToken, graphContext, driveLookupKey) {
+  const list = graphContext.documentLibraryListsByKey.get(driveLookupKey);
+  if (!list?.id) {
+    return undefined;
+  }
+  try {
+    const drive = await graphRequest(graphToken, `/sites/${graphContext.siteId}/lists/${list.id}/drive?$select=id,name,webUrl,sharepointIds`);
+    graphContext.drivesByKey.set(driveLookupKey, drive);
+    return drive;
+  } catch (error) {
+    if (isGraphAuthFailure(error)) {
+      throw error;
+    }
+    console.warn(`Could not resolve drive for hidden library list ${list.id}: ${error.message}`);
+    return undefined;
+  }
+}
+
 export async function getAssetContent(graphToken, getOptionalSharePointToken, serverUrl) {
   let graphContext;
   try {
@@ -871,7 +911,10 @@ export async function getAssetContent(graphToken, getOptionalSharePointToken, se
   }
   const assetPath = splitGraphAssetServerRelativePath(serverUrl);
   if (graphContext && assetPath) {
-    const drive = graphContext.drivesByKey.get(assetPath.driveLookupKey);
+    let drive = graphContext.drivesByKey.get(assetPath.driveLookupKey);
+    if (!drive) {
+      drive = await resolveHiddenLibraryDrive(graphToken, graphContext, assetPath.driveLookupKey);
+    }
     if (drive) {
       const encodedItemPath = assetPath.itemPath.split('/').map((segment) => encodeURIComponent(segment)).join('/');
       try {
@@ -968,7 +1011,7 @@ function localAssetPathFromServerUrl(serverUrl) {
   return `/assets/${base}${queryHash}${ext}`;
 }
 
-function rewriteUrls(rawContent, replacements, pageRouteMap) {
+export function rewriteUrls(rawContent, replacements, pageRouteMap) {
   let content = rawContent || '';
 
   for (const [source, destination] of replacements.entries()) {
@@ -1214,13 +1257,22 @@ async function sync() {
       if (previousAsset && previousAsset.path === localAsset && await exists(outputPath)) {
         continue;
       }
-      const content = await getAssetContent(graphToken, getOptionalSharePointToken, assetUrl);
-      await ensureDir(path.dirname(outputPath));
-      await writeFile(outputPath, content);
-      currentAssetState[assetUrl] = {
-        path: localAsset,
-        fetchedAt: new Date().toISOString(),
-      };
+      try {
+        const content = await getAssetContent(graphToken, getOptionalSharePointToken, assetUrl);
+        await ensureDir(path.dirname(outputPath));
+        await writeFile(outputPath, content);
+        currentAssetState[assetUrl] = {
+          path: localAsset,
+          fetchedAt: new Date().toISOString(),
+        };
+      } catch (error) {
+        // A single unresolvable asset (e.g. an image in a library not exposed
+        // via Graph) must not abort the whole publish run. Log and leave the
+        // original SharePoint URL in place for this asset instead of rewriting it.
+        console.warn(`Skipping asset (could not download): ${assetUrl} — ${error.message}`);
+        replacements.delete(assetUrl);
+        delete currentAssetState[assetUrl];
+      }
     }
   }
 
