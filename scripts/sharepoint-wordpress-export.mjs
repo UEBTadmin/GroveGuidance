@@ -11,7 +11,9 @@
 // Required environment variables (same as sharepoint-publish.mjs):
 //   SP_TENANT_ID, SP_CLIENT_ID, SP_CLIENT_SECRET
 // Optional:
-//   SP_TENANT_HOST, SP_SITE_PATH, PUBLIC_BASE_URL, WP_EXPORT_DIR (default: wp-export)
+//   SP_TENANT_HOST, SP_SITE_PATH, PUBLIC_BASE_URL, WP_EXPORT_DIR (default: wp-export),
+//   WP_MEDIA_SUBDIR (subfolder under wp-content/uploads/ where the media will be served from;
+//                    default: none, i.e. the uploads root)
 //
 // Output:
 //   <WP_EXPORT_DIR>/wordpress-export.xml  - WXR file to import into WordPress
@@ -40,6 +42,11 @@ const outputDir = path.resolve(process.cwd(), process.env.WP_EXPORT_DIR || 'wp-e
 const mediaDir = path.join(outputDir, 'media');
 const publicBaseUrl = (process.env.PUBLIC_BASE_URL || 'https://groveguidance.uebt.org').replace(/\/$/, '');
 const siteTitle = process.env.WP_SITE_TITLE || 'Grove Guidance';
+// Where the exported media files will live under the WordPress uploads folder. Defaults to the
+// uploads root (files dropped straight into wp-content/uploads/). Set WP_MEDIA_SUBDIR to place
+// them in a subfolder instead, e.g. WP_MEDIA_SUBDIR=grove-guidance-import.
+const mediaSubdir = (process.env.WP_MEDIA_SUBDIR || '').replace(/^\/+|\/+$/g, '');
+const mediaBaseUrl = `${publicBaseUrl}/wp-content/uploads${mediaSubdir ? `/${mediaSubdir}` : ''}`;
 
 function xmlEscape(value = '') {
   return String(value)
@@ -87,7 +94,7 @@ async function downloadMedia(pages, graphToken) {
         await writeFile(path.join(mediaDir, uniqueFileName), content);
         assetMap.set(assetUrl, {
           fileName: uniqueFileName,
-          mediaUrl: `${publicBaseUrl}/wp-content/uploads/grove-guidance-import/${uniqueFileName}`,
+          mediaUrl: `${mediaBaseUrl}/${uniqueFileName}`,
         });
         console.log(`Downloaded media: ${assetUrl} -> media/${uniqueFileName}`);
       } catch (error) {
@@ -249,7 +256,7 @@ async function main() {
   console.log('\nNext steps:');
   console.log('1. In WordPress, go to Tools > Import > WordPress (install the importer plugin if prompted).');
   console.log(`2. Upload ${path.join(outputDir, 'wordpress-export.xml')} and import all pages, assigning them to a user.`);
-  console.log(`3. Upload the files in ${mediaDir} to your Media Library (or place them at wp-content/uploads/grove-guidance-import/ to match the URLs already rewritten into the imported content).`);
+  console.log(`3. Upload the files in ${mediaDir} so they are served from ${mediaBaseUrl}/ (this matches the URLs already rewritten into the imported content).`);
   console.log(`4. Recreate the site navigation menu from ${path.join(outputDir, 'navigation.json')} under Appearance > Menus.`);
 }
 

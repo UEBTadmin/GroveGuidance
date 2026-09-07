@@ -79,14 +79,16 @@ npm run wordpress:export
 
 Required environment variables: `SP_TENANT_ID`, `SP_CLIENT_ID`, `SP_CLIENT_SECRET` (same as
 the sync pipeline). Optional: `SP_TENANT_HOST`, `SP_SITE_PATH`, `PUBLIC_BASE_URL`,
-`WP_SITE_TITLE`, `WP_EXPORT_DIR` (default `wp-export`).
+`WP_SITE_TITLE`, `WP_EXPORT_DIR` (default `wp-export`), `WP_MEDIA_SUBDIR` (subfolder under
+`wp-content/uploads/` that the media will be served from; default: none, i.e. the uploads root).
 
 Output (under `WP_EXPORT_DIR`):
 - `wordpress-export.xml` - WXR file; import via WordPress **Tools > Import > WordPress**.
 - `media/` - every referenced image/asset, downloaded and renamed to match the
-  `<wp:attachment_url>` placeholders baked into the XML. Upload these to your WordPress
-  media library (or place at `wp-content/uploads/grove-guidance-import/` to match the URLs
-  already rewritten into the imported page content).
+  `<wp:attachment_url>` placeholders baked into the XML. Upload these so they are served from
+  `wp-content/uploads/` (or the `WP_MEDIA_SUBDIR` subfolder, if set) to match the URLs already
+  rewritten into the imported page content. The WordPress importer fetches each attachment URL
+  over HTTP at import time, so the files must be in place **before** running the import.
 - `navigation.json` - a simple label/slug list derived from the published pages, since WXR
   does not reliably carry SharePoint's QuickLaunch navigation structure. Recreate this menu
   manually under WordPress **Appearance > Menus**.
