@@ -6,6 +6,10 @@
   "scripts": {
     "publish:sync": "node ./scripts/sharepoint-publish.mjs sync",
     "publish:validate": "node ./scripts/sharepoint-publish.mjs validate",
-    "wordpress:export": "node ./scripts/sharepoint-wordpress-export.mjs"
+    "wordpress:export": "node ./scripts/sharepoint-wordpress-export.mjs",
+    "theme:capture": "node ./scripts/capture-sharepoint-theme.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }

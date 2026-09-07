@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { loadTheme } from './sharepoint-theme.mjs';
 
 const DEFAULT_SP_TENANT_HOST = 'uebt.sharepoint.com';
 const DEFAULT_SP_SITE_PATH = '/sites/GroveGuidance';
@@ -1100,12 +1101,14 @@ export function rewriteUrls(rawContent, replacements, pageRouteMap) {
   return content;
 }
 
-function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) {
+async function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) {
   const navHtml = navLinks.length
     ? `<nav><ul>${navLinks
       .map((link) => `<li><a href="${htmlEscape(link.route)}">${htmlEscape(link.title)}</a></li>`)
       .join('')}</ul></nav>`
     : '';
+
+  const theme = await loadTheme();
 
   return `<!doctype html>
 <html lang="en">
@@ -1116,22 +1119,23 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
   <meta name="description" content="${htmlEscape(description || '')}" />
   <link rel="canonical" href="${htmlEscape(canonicalUrl)}" />
   <style>
-    body{font-family:Segoe UI,Arial,sans-serif;line-height:1.6;margin:0;color:#1b1b1b;background:#fff}
-    header{padding:1rem 1.25rem;background:#f4f6f8;border-bottom:1px solid #d5d9de}
+    body{font-family:${theme.fontFamily};line-height:1.6;margin:0;color:${theme.bodyTextColor};background:#fff}
+    header{padding:1rem 1.25rem;background:${theme.headerBackground};border-bottom:1px solid ${theme.headerBorder}}
     nav ul{display:flex;flex-wrap:wrap;gap:.75rem;list-style:none;padding:0;margin:.75rem 0 0}
-    nav a{text-decoration:none;color:#0f4f8c}
+    nav a{text-decoration:none;color:${theme.themePrimary}}
     main{max-width:1200px;margin:0 auto;padding:1.5rem}
     .unsupported{border-left:4px solid #ffb020;background:#fff3e0;padding:.75rem 1rem;margin:1rem 0}
     img{max-width:100%;height:auto}
 
     /* Hero web part: one large tile plus a 2x2 grid of smaller tiles alongside it, matching
-       SharePoint's Hero layout. Captions are overlaid at the bottom-left of each photo. */
+       SharePoint's Hero layout. Captions are overlaid at the bottom-left of each photo.
+       Colors/radii below come from the captured SharePoint theme (see sharepoint-theme.mjs). */
     .webpart-cards{display:grid;grid-template-columns:2fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;margin:0 0 1.5rem}
-    .webpart-card{position:relative;overflow:hidden;background:#333;min-height:160px}
+    .webpart-card{position:relative;overflow:hidden;background:${theme.themeDark};min-height:160px;border-radius:${theme.cardCornerRadius}}
     .webpart-card-hero{grid-row:1 / span 2}
     .webpart-card a{display:block;height:100%;color:inherit;text-decoration:none}
     .webpart-card img{display:block;width:100%;height:100%;object-fit:cover}
-    .webpart-card-overlay{position:absolute;left:0;right:0;bottom:0;padding:1rem;color:#fff;background:linear-gradient(to top,rgba(0,0,0,.55),rgba(0,0,0,0) 70%)}
+    .webpart-card-overlay{position:absolute;left:0;right:0;bottom:0;padding:1rem;color:#fff;background:${theme.cardOverlayGradient}}
     .webpart-card-overlay h2{margin:0;font-size:1.1rem;font-weight:600;color:#fff}
     .webpart-card-overlay span{display:block;font-size:.85rem;margin-top:.25rem}
     @media (max-width:720px){
@@ -1142,12 +1146,12 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
     .webpart-image{margin:0 0 1rem}
     .webpart-image figcaption{color:#555;font-size:.9rem;margin-top:.35rem}
 
-    /* Quick-links web part ("Popular Guidance"): a full-width gray strip with teal pill buttons,
-       matching SharePoint's Links list layout. */
-    .webpart:has(.webpart-items){background:#f3f2f1;padding:1.5rem;margin:0 -1.5rem}
+    /* Quick-links web part ("Popular Guidance"): a full-width gray strip with theme-colored
+       pill buttons, matching SharePoint's Links list layout. */
+    .webpart:has(.webpart-items){background:${theme.neutralLight};padding:1.5rem;margin:0 -1.5rem}
     .webpart-items{display:flex;flex-wrap:wrap;gap:.75rem;list-style:none;padding:0;margin:1rem 0 0}
     .webpart-items li{margin:0}
-    .webpart-items a{display:inline-flex;align-items:center;gap:.5rem;background:#0f4f5c;color:#fff;text-decoration:none;padding:.5rem 1rem;border-radius:2px;font-size:.9rem}
+    .webpart-items a{display:inline-flex;align-items:center;gap:.5rem;background:${theme.buttonBackground};color:${theme.buttonTextColor};text-decoration:none;padding:.5rem 1rem;border-radius:${theme.buttonCornerRadius};font-size:.9rem}
     .webpart-items a::before{content:"\\1F310";font-size:.85em}
 
     /* SharePoint modern-page utility classes, kept in exported content as-is so pages retain the
@@ -1159,9 +1163,9 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
     .fontSizeXLarge{font-size:1.5rem}
     .fontSizeXLargePlus{font-size:1.75rem}
     .fontSizeBannerTitle{font-size:2.25rem;font-weight:600}
-    .fontColorNeutralDark{color:#333}
-    .fontColorNeutralPrimaryAlt{color:#444}
-    .fontColorThemeSecondary{color:#0f4f8c}
+    .fontColorNeutralDark{color:${theme.themeDark}}
+    .fontColorNeutralPrimaryAlt{color:${theme.neutralSecondary}}
+    .fontColorThemeSecondary{color:${theme.themePrimary}}
     .lineHeight1_0{line-height:1}
     .lineHeight1_4{line-height:1.4}
     .headingSpacingAbove{margin-top:1.5rem}
@@ -1171,7 +1175,7 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
     .noSpacingBelow{margin-bottom:0}
     .spacingBelow{margin-bottom:.75rem}
     main table{border-collapse:collapse;width:100%;margin:1rem 0}
-    main table th,main table td{border:1px solid #d5d9de;padding:.5rem .75rem;text-align:left;vertical-align:top}
+    main table th,main table td{border:1px solid ${theme.headerBorder};padding:.5rem .75rem;text-align:left;vertical-align:top}
     main table.lightBackground th,main .lightBackground{background:#fff}
     main .rteTableBackgroundTransparent{background:transparent}
     main .tableLeftAlign{margin-left:0;margin-right:auto}
@@ -1419,7 +1423,7 @@ async function sync() {
     if (shouldRegenerate) {
       const rewrittenContent = rewriteUrls(page.CanvasContent1 || '', replacements, pageRouteMap) ||
         '<div class="unsupported">This page could not be fully rendered from SharePoint content.</div>';
-      const html = buildPageHtml({
+      const html = await buildPageHtml({
         title: page.Title || page.FileLeafRef,
         description: page.Description || '',
         content: rewrittenContent,
@@ -1443,7 +1447,7 @@ async function sync() {
   await writeFile(path.join(config.outputDir, 'sitemap.xml'), buildSitemap(routes), 'utf8');
   await writeFile(path.join(config.outputDir, 'robots.txt'), buildRobots(), 'utf8');
   await writeFile(path.join(config.outputDir, 'staticwebapp.config.json'), `${JSON.stringify(buildStaticWebAppConfig(), null, 2)}\n`, 'utf8');
-  await writeFile(path.join(config.outputDir, '404.html'), buildPageHtml({
+  await writeFile(path.join(config.outputDir, '404.html'), await buildPageHtml({
     title: 'Page Not Found',
     description: 'The requested page does not exist.',
     content: '<p>The requested page does not exist.</p><p><a href="/">Return to home</a></p>',

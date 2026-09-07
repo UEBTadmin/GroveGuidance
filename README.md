@@ -19,6 +19,22 @@ This repository now runs an automated pipeline that pulls published pages from t
 6. Validates route uniqueness, HTML presence, internal links, and local asset references before deployment.
 7. Deploys to Azure Static Web Apps.
 
+## Matching SharePoint's visual theme
+
+The static output does not have access to SharePoint's own stylesheet/JS (it's proprietary, auth-gated, and only rendered client-side by SharePoint's own SPA at runtime). Instead, `buildPageHtml()` in `scripts/sharepoint-publish.mjs` uses a small set of theme tokens (colors, fonts, corner radii, button/overlay styles) loaded from `scripts/sharepoint-theme.json` via `scripts/sharepoint-theme.mjs`, falling back to reasonable defaults if that file is absent.
+
+To (re)capture the real values from a live, authenticated SharePoint page:
+
+```
+npm run theme:capture
+```
+
+- First run: opens a visible Chromium window and pauses for you to sign in interactively (including MFA). Your session is then saved to `.cache/sharepoint-auth-state.json` (gitignored) and reused headlessly on future runs until it expires.
+- Writes the captured values to `scripts/sharepoint-theme.json`, which is committed to the repo so CI/CD always builds with the latest captured theme.
+- Optionally pass a specific page URL to capture from, e.g. `node scripts/capture-sharepoint-theme.mjs "https://uebt.sharepoint.com/sites/GroveGuidance/SitePages/Home.aspx"`.
+
+Whenever SharePoint's site theme/branding changes, re-run `npm run theme:capture`, review the diff in `scripts/sharepoint-theme.json`, and commit it — no manual CSS editing is required for the static site to follow along.
+
 ## Required GitHub secrets
 
 Add these repository secrets:
