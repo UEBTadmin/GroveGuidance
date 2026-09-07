@@ -952,7 +952,15 @@ export async function getAssetContent(graphToken, getOptionalSharePointToken, se
 
   const sharePointToken = await getOptionalSharePointToken();
   if (sharePointToken) {
-    return sharePointRequest(sharePointToken, serverUrl, 'buffer');
+    try {
+      return await sharePointRequest(sharePointToken, serverUrl, 'buffer');
+    } catch (error) {
+      if (!isSharePointAuthOrTransientFailure(error)) {
+        throw error;
+      }
+      // Legacy SharePoint REST is permanently retired on this tenant (app-only ACS auth), so this
+      // always 401s. Fall through to the Graph Shares API below instead of failing the whole asset.
+    }
   }
 
   // Last resort: Graph's "shares" API resolves any absolute URL the app has access to directly to
@@ -1146,6 +1154,12 @@ function isSharePointUnsupportedAppOnlyToken(error) {
 function isGraphAuthOrTransientFailure(error) {
   const message = String(error?.message || '');
   return isGraphAuthFailure(error) || /Graph request failed \((500|502|503|504)\b/i.test(message);
+}
+
+function isSharePointAuthOrTransientFailure(error) {
+  const status = Number(error?.status || 0);
+  const message = String(error?.message || '');
+  return [401, 403, 500, 502, 503, 504].includes(status) || /SharePoint request failed \((401|403|500|502|503|504)\b/i.test(message);
 }
 
 async function getPublishedPagesFromSharePoint(token) {
