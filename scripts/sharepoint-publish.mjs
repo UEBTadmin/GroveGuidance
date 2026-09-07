@@ -1123,6 +1123,32 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
     .webpart-card h2{padding:0 .75rem}
     .webpart-image{margin:0 0 1rem}
     .webpart-image figcaption{color:#555;font-size:.9rem;margin-top:.35rem}
+
+    /* SharePoint modern-page utility classes, kept in exported content as-is so pages retain the
+       same typographic rhythm and table styling as the original SitePages. */
+    .fontSizeSmall{font-size:.8rem}
+    .fontSizeMedium{font-size:1rem}
+    .fontSizeMediumPlus{font-size:1.0625rem}
+    .fontSizeLarge{font-size:1.25rem}
+    .fontSizeXLarge{font-size:1.5rem}
+    .fontSizeXLargePlus{font-size:1.75rem}
+    .fontSizeBannerTitle{font-size:2.25rem;font-weight:600}
+    .fontColorNeutralDark{color:#333}
+    .fontColorNeutralPrimaryAlt{color:#444}
+    .fontColorThemeSecondary{color:#0f4f8c}
+    .lineHeight1_0{line-height:1}
+    .lineHeight1_4{line-height:1.4}
+    .headingSpacingAbove{margin-top:1.5rem}
+    .headingSpacingBelow{margin-bottom:.75rem}
+    .headingNoSpacingBelow{margin-bottom:0}
+    .noSpacingAbove{margin-top:0}
+    .noSpacingBelow{margin-bottom:0}
+    .spacingBelow{margin-bottom:.75rem}
+    main table{border-collapse:collapse;width:100%;margin:1rem 0}
+    main table th,main table td{border:1px solid #d5d9de;padding:.5rem .75rem;text-align:left;vertical-align:top}
+    main table.lightBackground th,main .lightBackground{background:#fff}
+    main .rteTableBackgroundTransparent{background:transparent}
+    main .tableLeftAlign{margin-left:0;margin-right:auto}
   </style>
 </head>
 <body>
