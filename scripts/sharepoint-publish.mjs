@@ -1341,6 +1341,15 @@ async function sync() {
     const pageId = String(page.Id);
     const route = routeFromPage(page);
     const outputFile = outputFileFromRoute(route);
+    // Include the resolved (or still-unresolved) state of every asset this page references, not
+    // just the raw SharePoint content, in the fingerprint. Otherwise a page whose CanvasContent1
+    // hasn't changed never regenerates even after a previously-failed asset starts downloading
+    // successfully (e.g. once a new asset-resolution fallback lands) - it would keep serving the
+    // stale HTML with the raw, now-dead SharePoint URL baked in forever.
+    const assetResolutionState = collectAssetCandidates(page)
+      .map((assetUrl) => `${assetUrl}=>${replacements.get(assetUrl) || ''}`)
+      .sort();
+
     const fingerprint = createHash('sha1')
       .update(JSON.stringify({
         modified: page.Modified,
@@ -1348,6 +1357,7 @@ async function sync() {
         fileRef: page.FileRef,
         content: page.CanvasContent1,
         description: page.Description,
+        assetResolutionState,
       }))
       .digest('hex');
 
