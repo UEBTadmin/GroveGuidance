@@ -395,10 +395,17 @@ function renderHeroWebPart(properties, serverProcessedContent) {
     const url = linkByKey.get(`content[${index}].link`) || item?.sourceItem?.url;
     const imageUrl = imageByKey.get(`content[${index}].image.url`) || item?.image?.resolvedUrl;
     const imageHtml = imageUrl ? `<img src="${htmlEscape(imageUrl)}" alt="" />` : '';
-    const body = `${imageHtml}${titleHtml}${descriptionHtml}`;
+    // Mirrors SharePoint's Hero web part layout: the first card renders as one large tile,
+    // the remaining cards fill a 2x2 grid alongside it, with the title/description overlaid on
+    // the bottom-left of each photo rather than shown as separate text below it.
+    const tileClass = index === 0 ? 'webpart-card webpart-card-hero' : 'webpart-card';
+    const overlay = (titleHtml || descriptionHtml)
+      ? `<div class="webpart-card-overlay">${titleHtml}${descriptionHtml}</div>`
+      : '';
+    const body = `${imageHtml}${overlay}`;
     return url
-      ? `<div class="webpart-card"><a href="${htmlEscape(url)}">${body}</a></div>`
-      : `<div class="webpart-card">${body}</div>`;
+      ? `<div class="${tileClass}"><a href="${htmlEscape(url)}">${body}</a></div>`
+      : `<div class="${tileClass}">${body}</div>`;
   }).join('');
 
   return `<div class="webpart-cards">${cards}</div>`;
@@ -1113,16 +1120,35 @@ function buildPageHtml({ title, description, content, canonicalUrl, navLinks }) 
     header{padding:1rem 1.25rem;background:#f4f6f8;border-bottom:1px solid #d5d9de}
     nav ul{display:flex;flex-wrap:wrap;gap:.75rem;list-style:none;padding:0;margin:.75rem 0 0}
     nav a{text-decoration:none;color:#0f4f8c}
-    main{max-width:1024px;margin:0 auto;padding:1.5rem}
+    main{max-width:1200px;margin:0 auto;padding:1.5rem}
     .unsupported{border-left:4px solid #ffb020;background:#fff3e0;padding:.75rem 1rem;margin:1rem 0}
     img{max-width:100%;height:auto}
-    .webpart-cards{display:flex;flex-wrap:wrap;gap:1rem}
-    .webpart-card{flex:1 1 220px;border:1px solid #d5d9de;border-radius:.5rem;overflow:hidden}
-    .webpart-card a{color:inherit;text-decoration:none;display:block}
-    .webpart-card img{display:block;width:100%}
-    .webpart-card h2{padding:0 .75rem}
+
+    /* Hero web part: one large tile plus a 2x2 grid of smaller tiles alongside it, matching
+       SharePoint's Hero layout. Captions are overlaid at the bottom-left of each photo. */
+    .webpart-cards{display:grid;grid-template-columns:2fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;margin:0 0 1.5rem}
+    .webpart-card{position:relative;overflow:hidden;background:#333;min-height:160px}
+    .webpart-card-hero{grid-row:1 / span 2}
+    .webpart-card a{display:block;height:100%;color:inherit;text-decoration:none}
+    .webpart-card img{display:block;width:100%;height:100%;object-fit:cover}
+    .webpart-card-overlay{position:absolute;left:0;right:0;bottom:0;padding:1rem;color:#fff;background:linear-gradient(to top,rgba(0,0,0,.55),rgba(0,0,0,0) 70%)}
+    .webpart-card-overlay h2{margin:0;font-size:1.1rem;font-weight:600;color:#fff}
+    .webpart-card-overlay span{display:block;font-size:.85rem;margin-top:.25rem}
+    @media (max-width:720px){
+      .webpart-cards{grid-template-columns:1fr 1fr}
+      .webpart-card-hero{grid-column:1 / span 2;grid-row:auto}
+    }
+
     .webpart-image{margin:0 0 1rem}
     .webpart-image figcaption{color:#555;font-size:.9rem;margin-top:.35rem}
+
+    /* Quick-links web part ("Popular Guidance"): a full-width gray strip with teal pill buttons,
+       matching SharePoint's Links list layout. */
+    .webpart:has(.webpart-items){background:#f3f2f1;padding:1.5rem;margin:0 -1.5rem}
+    .webpart-items{display:flex;flex-wrap:wrap;gap:.75rem;list-style:none;padding:0;margin:1rem 0 0}
+    .webpart-items li{margin:0}
+    .webpart-items a{display:inline-flex;align-items:center;gap:.5rem;background:#0f4f5c;color:#fff;text-decoration:none;padding:.5rem 1rem;border-radius:2px;font-size:.9rem}
+    .webpart-items a::before{content:"\\1F310";font-size:.85em}
 
     /* SharePoint modern-page utility classes, kept in exported content as-is so pages retain the
        same typographic rhythm and table styling as the original SitePages. */
